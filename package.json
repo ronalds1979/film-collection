@@ -13,8 +13,14 @@
     "test:ocr": "node --test tests/ocr.integration.test.js",
     "build": "vite build",
     "start": "node --env-file=.env server/index.js",
+    "env:check": "node -e \"const fs=require('fs');if(!fs.existsSync('.env'))fs.copyFileSync('.env.example','.env')\"",
+    "predev": "npm run env:check",
+    "prestart": "npm run env:check",
+    "predb:push": "npm run env:check",
     "db:push": "prisma db push",
+    "predb:generate": "npm run env:check",
     "db:generate": "prisma generate",
+    "predb:studio": "npm run env:check",
     "db:studio": "prisma studio"
   },
   "dependencies": {
