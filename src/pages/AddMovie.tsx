@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import PhotoCamera from '@mui/icons-material/PhotoCamera';
-import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
-import SearchIcon from '@mui/icons-material/Search';
+import { PhotoCamera } from '@mui/icons-material';
+import { ExpandMoreRounded } from '@mui/icons-material';
+import { Search } from '@mui/icons-material';
 import { Movie, Genre, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
@@ -659,7 +659,7 @@ export function AddMoviePage() {
                     variant="contained"
                     onClick={() => void handleLookupMetadata()}
                     disabled={isLookingUpMetadata || isReadingBarcode}
-                    startIcon={isLookingUpMetadata ? <CircularProgress size={18} /> : <SearchIcon />}
+                    startIcon={isLookingUpMetadata ? <CircularProgress size={18} /> : <Search />}
                     sx={{ flex: 1 }}
                   >
                     {isLookingUpMetadata ? 'Searching...' : 'Look up metadata'}

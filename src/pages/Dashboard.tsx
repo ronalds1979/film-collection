@@ -1,13 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItem, ListItemText, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
-import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
-import LibraryAddRoundedIcon from '@mui/icons-material/LibraryAddRounded';
-import PhotoCamera from '@mui/icons-material/PhotoCamera';
-import SearchIcon from '@mui/icons-material/Search';
-import EditRounded from '@mui/icons-material/EditRounded';
-import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
-import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
+import { DashboardRounded } from '@mui/icons-material';
+import { LibraryAddRounded } from '@mui/icons-material';
+import { PhotoCamera } from '@mui/icons-material';
+import { Search } from '@mui/icons-material';
+import { EditRounded } from '@mui/icons-material';
+import { ChevronLeftRounded } from '@mui/icons-material';
+import { ChevronRightRounded } from '@mui/icons-material';
 import { Summary, Movie, Genre, Edition } from '../types';
 import { API_BASE } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
@@ -75,10 +75,10 @@ export function DashboardPage() {
         </Box>
 
         <Grid container spacing={2}>
-          <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" />
-          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<LibraryAddRoundedIcon />} to="/collection?view=editions" />
+          <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRounded />} to="/collection?view=movies" />
+          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<LibraryAddRounded />} to="/collection?view=editions" />
           <StatCard title="Favorites" value={summary.favorites} subtitle="View favorite titles" icon={<PhotoCamera />} to="/collection?view=favorites" />
-          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<SearchIcon />} to="/collection?view=unwatched" />
+          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<Search />} to="/collection?view=unwatched" />
         </Grid>
 
         <Grid container spacing={3}>
