@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
@@ -84,7 +84,7 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   );
 }
 
-function MoviePosterCard({ movie, onSelect }: {
+const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
   movie: Movie;
   onSelect: (movie: Movie) => void;
 }) {
@@ -162,7 +162,7 @@ function MoviePosterCard({ movie, onSelect }: {
       </Button>
     </Card>
   );
-}
+});
 
 function MovieCarouselRow({ genre, movies, onSelect }: {
   genre: Genre;
@@ -231,6 +231,14 @@ export function CollectionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
+
+  const handleSelectMovie = useCallback((movie: Movie) => {
+    navigate(`/edit-movie/${movie.id}${movie.editions?.[0] ? `?editionId=${movie.editions[0].id}` : ''}`);
+  }, [navigate]);
+
+  const handleSelectMovieEdition = useCallback((movie: Movie, edition?: Edition) => {
+    navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -411,7 +419,7 @@ export function CollectionPage() {
                 key={genre.id}
                 genre={genre}
                 movies={shelfMovies}
-                onSelect={(movie) => navigate(`/edit-movie/${movie.id}${movie.editions?.[0] ? `?editionId=${movie.editions[0].id}` : ''}`)}
+                onSelect={handleSelectMovie}
               />
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
@@ -426,7 +434,7 @@ export function CollectionPage() {
             rows={displayedRows}
             isLoading={isLoading}
             loadError={loadError}
-            onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            onSelect={handleSelectMovieEdition}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table>
@@ -463,7 +471,7 @@ export function CollectionPage() {
                 <TableRow
                   key={`${movie.id}-${edition?.id || 'movie'}`}
                   hover
-                  onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+                  onClick={() => handleSelectMovieEdition(movie, edition)}
                   sx={{ cursor: 'pointer' }}
                 >
                   <TableCell>
@@ -486,7 +494,7 @@ export function CollectionPage() {
                       startIcon={<EditRounded />}
                       onClick={(event) => {
                         event.stopPropagation();
-                        navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
+                        handleSelectMovieEdition(movie, edition);
                       }}
                     >
                       Edit
