@@ -269,8 +269,11 @@ export function CollectionPage() {
     };
   }, []);
 
-  const filteredMovies = useMemo(() => movies.filter((movie) => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredMovies = useMemo(() => {
+    // ⚡ Bolt: Hoist string normalization outside the filter loop to avoid repeating O(N) operations.
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return movies.filter((movie) => {
       const matchesSearch = !normalizedSearch || [
         movie.title,
         movie.originalTitle,
@@ -283,7 +286,8 @@ export function CollectionPage() {
       const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
       const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
       return matchesSearch && matchesStatus && matchesFavorite && matchesUnwatched && matchesGenre;
-    }), [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+    });
+  }, [collectionView, genreFilter, movies, searchTerm, statusFilter]);
 
   const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
     const editions = movie.editions || [];
