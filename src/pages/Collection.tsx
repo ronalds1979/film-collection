@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import SearchIcon from '@mui/icons-material/Search';
 import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
@@ -219,11 +220,34 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
 }
 
 export function CollectionPage() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [genres, setGenres] = useState<Genre[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [genreError, setGenreError] = useState<string | null>(null);
+  const { data: movies = [], isLoading: isMoviesLoading, error: moviesError } = useQuery<Movie[]>({
+    queryKey: ['movies'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/movies`);
+      if (!response.ok) throw new Error(`The collection could not be loaded (HTTP ${response.status}).`);
+      const payload = await response.json();
+      if (!Array.isArray(payload)) throw new Error('The collection API returned an invalid response.');
+      return payload;
+    },
+  });
+
+  const { data: genres = [], error: genresError } = useQuery<Genre[]>({
+    queryKey: ['genres'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/genres`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(!Array.isArray(payload) && payload.message ? payload.message : 'Film genres could not be loaded.');
+      }
+      if (!Array.isArray(payload)) throw new Error('The genre list returned an invalid response.');
+      return payload;
+    },
+  });
+
+  const isLoading = isMoviesLoading;
+  const loadError = moviesError instanceof Error ? moviesError.message : null;
+  const genreError = genresError instanceof Error ? genresError.message : null;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
@@ -231,43 +255,6 @@ export function CollectionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadMovies = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/movies`);
-        if (!response.ok) throw new Error(`The collection could not be loaded (HTTP ${response.status}).`);
-        const payload = await response.json() as Movie[];
-        if (!Array.isArray(payload)) throw new Error('The collection API returned an invalid response.');
-        if (!cancelled) setMovies(payload);
-      } catch (error) {
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : 'The collection could not be loaded.');
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-    void loadMovies();
-    const loadGenres = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/genres`);
-        const payload = await response.json() as Genre[] | { message?: string };
-        if (!response.ok) {
-          throw new Error(!Array.isArray(payload) ? payload.message || 'Film genres could not be loaded.' : 'Film genres could not be loaded.');
-        }
-        if (!Array.isArray(payload)) throw new Error('The genre list returned an invalid response.');
-        if (!cancelled) setGenres(payload);
-      } catch (error) {
-        if (!cancelled) setGenreError(error instanceof Error ? error.message : 'Film genres could not be loaded.');
-      }
-    };
-    void loadGenres();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const filteredMovies = useMemo(() => movies.filter((movie) => {
       const normalizedSearch = searchTerm.trim().toLowerCase();
