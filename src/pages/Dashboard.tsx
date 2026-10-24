@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItem, ListItemText, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import LibraryAddRoundedIcon from '@mui/icons-material/LibraryAddRounded';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -38,29 +39,34 @@ function StatCard({ title, value, subtitle, icon, to }: { title: string; value: 
 }
 
 export function DashboardPage() {
-  const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const { data: summary = { totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 }, isLoading: isSummaryLoading } = useQuery<Summary>({
+    queryKey: ['summary'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/summary`);
+      return response.json();
+    },
+  });
+
+  const { data: movies = [], isLoading: isMoviesLoading } = useQuery<Movie[]>({
+    queryKey: ['movies'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/movies`);
+      return response.json();
+    },
+  });
+
   const alphabetizedMovies = useMemo(
     () => [...movies].sort((left, right) => (left.alternativeTitle || left.title).localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
     [movies],
   );
 
-  useEffect(() => {
-    const fetchSummary = async () => {
-      const response = await fetch(`${API_BASE}/summary`);
-      const payload = (await response.json()) as Summary;
-      setSummary(payload);
-    };
-
-    const fetchMovies = async () => {
-      const response = await fetch(`${API_BASE}/movies`);
-      const payload = (await response.json()) as Movie[];
-      setMovies(payload);
-    };
-
-    void fetchSummary();
-    void fetchMovies();
-  }, []);
+  if (isSummaryLoading || isMoviesLoading) {
+    return (
+      <Container maxWidth="xl" sx={{ py: { xs: 2.5, sm: 4 }, px: { xs: 1.5, sm: 3 }, display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, sm: 4 }, px: { xs: 1.5, sm: 3 } }}>

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useForm, Controller } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
@@ -9,13 +13,59 @@ import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, 
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
 import { formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
+
+const movieFormSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  originalTitle: z.string().optional().nullable(),
+  alternativeTitle: z.string().optional().nullable(),
+  countryId: z.string().optional().nullable(),
+  originalLanguageId: z.string().optional().nullable(),
+  releaseYear: z.union([z.string(), z.number()]).optional().nullable(),
+  releaseDate: z.string().optional().nullable(),
+  ageRating: z.string().optional().nullable(),
+  synopsis: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  favorite: z.boolean().optional(),
+  genreIds: z.array(z.string()).optional(),
+  watchedStatus: z.string().optional().nullable(),
+  watchedDate: z.string().optional().nullable(),
+  formatId: z.string().optional().nullable(),
+  editionTypeId: z.string().optional().nullable(),
+  movieVersionId: z.string().optional().nullable(),
+  distributorId: z.string().optional().nullable(),
+  countryEditionId: z.string().optional().nullable(),
+  locationId: z.string().optional().nullable(),
+  collectionId: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  catalogNumber: z.string().optional().nullable(),
+  editionYear: z.union([z.string(), z.number()]).optional().nullable(),
+  condition: z.string().optional().nullable(),
+  region: z.string().optional().nullable(),
+  purchasePrice: z.union([z.string(), z.number()]).optional().nullable(),
+  estimatedValue: z.union([z.string(), z.number()]).optional().nullable(),
+  editionNotes: z.string().optional().nullable(),
+  imdbId: z.string().optional().nullable(),
+  tmdbId: z.string().optional().nullable(),
+  imdbUrl: z.string().optional().nullable(),
+  tmdbUrl: z.string().optional().nullable(),
+  posterPath: z.string().optional().nullable(),
+  discCount: z.union([z.string(), z.number()]).optional().nullable(),
+  steelbook: z.boolean().optional(),
+  slipcover: z.boolean().optional(),
+  digibook: z.boolean().optional(),
+  booklet: z.boolean().optional(),
+  posterIncluded: z.boolean().optional(),
+});
+type MovieFormData = z.infer<typeof movieFormSchema>;
+
 export function AddMoviePage() {
+  const queryClient = useQueryClient();
   const { movieId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const isEditing = Boolean(movieId);
   const wasEditingRef = useRef(isEditing);
-  const [form, setForm] = useState(emptyMovieForm);
+  const { control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<MovieFormData>({ resolver: zodResolver(movieFormSchema), defaultValues: emptyMovieForm });
   const [frontCover, setFrontCover] = useState<File | null>(null);
   const [backCover, setBackCover] = useState<File | null>(null);
   const [rotatingCovers, setRotatingCovers] = useState<{ front?: boolean; back?: boolean }>({});
@@ -89,7 +139,7 @@ export function AddMoviePage() {
     if (!movieId) {
       setIsLoadingMovie(false);
       if (wasEditingRef.current) {
-        setForm(emptyMovieForm);
+        reset(emptyMovieForm);
         setUploadedCovers({});
         setFrontCover(null);
         setBackCover(null);
@@ -120,7 +170,7 @@ export function AddMoviePage() {
         if (cancelled) return;
 
         setEditingEditionId(edition.id);
-        setForm({
+        reset({
           ...emptyMovieForm,
           title: movie.title || '',
           originalTitle: movie.originalTitle || '',
@@ -182,9 +232,6 @@ export function AddMoviePage() {
     };
   }, [isEditing, movieId, searchParams]);
 
-  const updateForm = (field: string, value: string | boolean | string[]) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  };
 
   const handleCoverSelected = async (slot: 'front' | 'back', file: File | null) => {
     if (!file) {
@@ -401,7 +448,7 @@ export function AddMoviePage() {
         return;
       }
 
-      updateForm('barcode', result.barcode);
+      setValue('barcode', result.barcode, { shouldValidate: true, shouldDirty: true });
       setBarcodeScanStatus({
         severity: 'success',
         message: `Barcode captured: ${result.barcode}${result.validated ? ' (checksum valid)' : ' (please verify the digits)'} · ${result.source || result.format || 'image scan'}.`,
@@ -418,10 +465,10 @@ export function AddMoviePage() {
   };
 
   const handleLookupMetadata = async (barcodeReference?: string) => {
-    const barcode = (barcodeReference ?? form.barcode).trim();
+    const barcode = (barcodeReference ?? watch('barcode') ?? '').trim();
     const lookupQueries = Array.from(new Set([
-      form.title.trim(),
-      form.originalTitle.trim(),
+      (watch('title') || '').trim(),
+      (watch('originalTitle') || '').trim(),
     ].filter(Boolean)));
 
     if (!lookupQueries.length && !barcode) {
@@ -482,29 +529,30 @@ export function AddMoviePage() {
     const year = result.release_date || result.releaseDate || '';
     const parsedYear = year ? String(year).slice(0, 4) : '';
 
-    setForm((current) => ({
-      ...current,
-      title: result.title || current.title,
-      originalTitle: result.original_title || result.originalTitle || current.originalTitle,
-      releaseYear: parsedYear || current.releaseYear,
-      releaseDate: year || current.releaseDate,
-      synopsis: result.overview || current.synopsis,
-      imdbId: result.imdb_id || current.imdbId,
-      tmdbId: result.tmdbId || (result.id ? String(result.id) : current.tmdbId),
-      imdbUrl: result.imdb_id ? `https://www.imdb.com/title/${result.imdb_id}/` : current.imdbUrl,
-      tmdbUrl: result.tmdbUrl || (result.id ? `https://www.themoviedb.org/movie/${result.id}` : current.tmdbUrl),
-      posterPath: result.poster_path
-        ? result.poster_path.startsWith('http')
-          ? result.poster_path
-          : `https://image.tmdb.org/t/p/w500${result.poster_path}`
-        : current.posterPath,
-    }));
+    if (result.title) setValue('title', result.title);
+    if (result.original_title || result.originalTitle) setValue('originalTitle', result.original_title || result.originalTitle);
+    if (parsedYear) setValue('releaseYear', parsedYear);
+    if (year) setValue('releaseDate', year);
+    if (result.overview) setValue('synopsis', result.overview);
+    if (result.imdb_id) setValue('imdbId', result.imdb_id);
+    if (result.tmdbId || result.id) setValue('tmdbId', result.tmdbId || String(result.id));
+    if (result.imdb_id) setValue('imdbUrl', `https://www.imdb.com/title/${result.imdb_id}/`);
+    if (result.tmdbUrl || result.id) setValue('tmdbUrl', result.tmdbUrl || `https://www.themoviedb.org/movie/${result.id}`);
+    if (result.poster_path) {
+       setValue('posterPath', result.poster_path.startsWith('http') ? result.poster_path : `https://image.tmdb.org/t/p/w500${result.poster_path}`);
+    }
+
+    // Attempt to map genres if returned
+    if (result.Genre && Array.isArray(result.Genre)) {
+       const mapped = result.Genre.map(g => genres.find(genre => genre.name.toLowerCase() === g.toLowerCase())?.id).filter(Boolean) as string[];
+       if (mapped.length) setValue('genreIds', mapped);
+    }
 
     setStatusMessage(`Metadata from ${result.source || 'source'} applied to the entry.`);
   };
 
   const resetIntake = () => {
-    setForm(emptyMovieForm);
+    reset(emptyMovieForm);
     setUploadedCovers({});
     setFrontCover(null);
     setBackCover(null);
@@ -514,8 +562,7 @@ export function AddMoviePage() {
     setStatusMessage(null);
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const onSubmit = async (data: MovieFormData) => {
 
     if (
       (frontCover && !uploadedCovers.front)
@@ -535,18 +582,18 @@ export function AddMoviePage() {
 
     const body = {
       ...(isEditing && editingEditionId ? { editionId: editingEditionId } : {}),
-      ...form,
-      releaseYear: Number(form.releaseYear) || null,
-      editionYear: Number(form.editionYear) || null,
-      purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : null,
-      estimatedValue: form.estimatedValue ? Number(form.estimatedValue) : null,
-      favorite: Boolean(form.favorite),
-      genreIds: form.genreIds,
-      steelbook: Boolean(form.steelbook),
-      slipcover: Boolean(form.slipcover),
-      digibook: Boolean(form.digibook),
-      booklet: Boolean(form.booklet),
-      posterIncluded: Boolean(form.posterIncluded),
+      ...data,
+      releaseYear: Number(data.releaseYear) || null,
+      editionYear: Number(data.editionYear) || null,
+      purchasePrice: data.purchasePrice ? Number(data.purchasePrice) : null,
+      estimatedValue: data.estimatedValue ? Number(data.estimatedValue) : null,
+      favorite: Boolean(data.favorite),
+      genreIds: data.genreIds,
+      steelbook: Boolean(data.steelbook),
+      slipcover: Boolean(data.slipcover),
+      digibook: Boolean(data.digibook),
+      booklet: Boolean(data.booklet),
+      posterIncluded: Boolean(data.posterIncluded),
       ...(uploadedCovers.front ? { frontCoverPath: uploadedCovers.front.path } : {}),
       ...(uploadedCovers.back ? { backCoverPath: uploadedCovers.back.path } : {}),
     };
@@ -569,7 +616,7 @@ export function AddMoviePage() {
         return;
       }
       setStatusMessage('Movie and edition saved to your collection.');
-      setForm(emptyMovieForm);
+      reset(emptyMovieForm);
       setUploadedCovers({});
       setSearchResults([]);
       setFrontCover(null);
@@ -596,7 +643,7 @@ export function AddMoviePage() {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Paper sx={{ p: { xs: 1.75, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
         <Typography variant="h4" sx={{ mb: 2, fontWeight: 800 }}>
-          {isEditing ? `Edit ${form.title || 'movie'}` : 'Capture and catalog a physical movie'}
+          {isEditing ? `Edit ${watch('title') || 'movie'}` : 'Capture and catalog a physical movie'}
         </Typography>
         <Alert severity="info" sx={{ mb: 3 }}>
           {isEditing
@@ -604,7 +651,7 @@ export function AddMoviePage() {
             : 'Identify the movie with its barcode or title, review live metadata, then add its cover photos and edition details before saving.'}
         </Alert>
 
-        <Box component="form" onSubmit={handleSubmit}>
+        <Box component="form" onSubmit={handleSubmit(onSubmit)}>
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>1. Identify the movie</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -612,19 +659,21 @@ export function AddMoviePage() {
             </Typography>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Movie title" value={form.title} onChange={(event) => updateForm('title', event.target.value)} required />
+                <Controller name="title" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth label="Movie title" required error={!!errors.title} helperText={errors.title?.message} />} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} />
+                <Controller name="originalTitle" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth label="Original title" />} />
               </Grid>
               <Grid item xs={12} md={5}>
-                <TextField
-                  fullWidth
-                  label="Barcode"
-                  value={form.barcode}
-                  onChange={(event) => updateForm('barcode', event.target.value)}
-                  helperText={form.barcode ? (isValidRetailBarcode(form.barcode) ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
-                />
+                <Controller name="barcode" control={control} render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Barcode"
+                    value={field.value || ''}
+                    helperText={field.value ? (isValidRetailBarcode(field.value) ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
+                  />
+                )} />
               </Grid>
               <Grid item xs={12} md={7}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -740,147 +789,104 @@ export function AddMoviePage() {
               <Typography variant="subtitle1" fontWeight={700}>Movie details</Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth disabled={!genres.length || Boolean(genreError)}>
-                <InputLabel id="movie-genres-label">Genres</InputLabel>
-                <Select
-                  labelId="movie-genres-label"
-                  multiple
-                  label="Genres"
-                  value={form.genreIds}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    updateForm('genreIds', typeof value === 'string' ? value.split(',') : value);
-                  }}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((id) => <Chip key={id} label={genres.find((genre) => genre.id === id)?.name || id} size="small" />)}
-                    </Box>
-                  )}
-                >
-                  {genres.map((genre) => (
-                    <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Controller name="genreIds" control={control} render={({ field }) => (
+                <FormControl fullWidth disabled={!genres.length || Boolean(genreError)}>
+                  <InputLabel id="movie-genres-label">Genres</InputLabel>
+                  <Select
+                    {...field}
+                    labelId="movie-genres-label"
+                    multiple
+                    label="Genres"
+                    value={field.value || []}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((id) => <Chip key={id} label={genres.find((genre) => genre.id === id)?.name || id} size="small" />)}
+                      </Box>
+                    )}
+                  >
+                    {genres.map((genre) => (
+                      <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )} />
               {genreError && <Alert severity="error" sx={{ mt: 1 }}>{genreError}</Alert>}
               {!genreError && !genres.length && <Typography variant="caption" color="text.secondary">Loading genres...</Typography>}
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField fullWidth label="Alternative title" value={form.alternativeTitle} onChange={(event) => updateForm('alternativeTitle', event.target.value)} />
+              <Controller name="alternativeTitle" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth label="Alternative title" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <NameOptionField
-                label="Movie country"
-                value={form.countryId}
-                options={countryOptions}
-                helperText="Search by country name, or type a country."
-                onChange={(value) => updateForm('countryId', value)}
-              />
+              <Controller name="countryId" control={control} render={({ field }) => <NameOptionField label="Movie country" value={field.value || ''} options={countryOptions} helperText="Search by country name, or type a country." onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <NameOptionField
-                label="Original language"
-                value={form.originalLanguageId}
-                options={languageOptions}
-                helperText="Search by language name, or type a language."
-                onChange={(value) => updateForm('originalLanguageId', value)}
-              />
+              <Controller name="originalLanguageId" control={control} render={({ field }) => <NameOptionField label="Original language" value={field.value || ''} options={languageOptions} helperText="Search by language name, or type a language." onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField fullWidth label="Release year" type="number" value={form.releaseYear} onChange={(event) => updateForm('releaseYear', event.target.value)} />
+              <Controller name="releaseYear" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="number" label="Release year" />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField fullWidth label="Release date" type="date" InputLabelProps={{ shrink: true }} value={form.releaseDate} onChange={(event) => updateForm('releaseDate', event.target.value)} />
+              <Controller name="releaseDate" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="date" InputLabelProps={{ shrink: true }} label="Release date" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <SuggestionField label="Age rating" value={form.ageRating} options={ageRatingOptions} onChange={(value) => updateForm('ageRating', value)} />
+              <Controller name="ageRating" control={control} render={({ field }) => <SuggestionField label="Age rating" value={field.value || ''} options={ageRatingOptions} onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <FormControlLabel
-                control={<Checkbox checked={form.favorite} onChange={(event) => updateForm('favorite', event.target.checked)} />}
-                label="Favorite"
-              />
+              <Controller name="favorite" control={control} render={({ field }) => <FormControlLabel control={<Checkbox checked={field.value} onChange={field.onChange} />} label="Favorite" />} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth multiline minRows={3} label="Synopsis" value={form.synopsis} onChange={(event) => updateForm('synopsis', event.target.value)} />
+              <Controller name="synopsis" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth multiline minRows={3} label="Synopsis" />} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth multiline minRows={2} label="Movie notes" value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} />
+              <Controller name="notes" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth multiline minRows={2} label="Movie notes" />} />
             </Grid>
             <Grid item xs={12}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 1 }}>Physical edition</Typography>
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Edition year" type="number" value={form.editionYear} onChange={(event) => updateForm('editionYear', event.target.value)} />
+              <Controller name="editionYear" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="number" label="Edition year" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Catalog number" value={form.catalogNumber} onChange={(event) => updateForm('catalogNumber', event.target.value)} />
+              <Controller name="catalogNumber" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth label="Catalog number" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Disc count" type="number" value={form.discCount} onChange={(event) => updateForm('discCount', event.target.value)} />
+              <Controller name="discCount" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="number" label="Disc count" />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Format</InputLabel>
-                <Select label="Format" value={form.formatId} onChange={(event) => updateForm('formatId', event.target.value)}>
-                  {formatOptions.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Controller name="formatId" control={control} render={({ field }) => <FormControl fullWidth><InputLabel>Format</InputLabel><Select {...field} value={field.value || ''} label="Format">{formatOptions.map((option) => <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>)}</Select></FormControl>} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Edition type</InputLabel>
-                <Select label="Edition type" value={form.editionTypeId} onChange={(event) => updateForm('editionTypeId', event.target.value)}>
-                  {editionTypeOptions.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Controller name="editionTypeId" control={control} render={({ field }) => <FormControl fullWidth><InputLabel>Edition type</InputLabel><Select {...field} value={field.value || ''} label="Edition type">{editionTypeOptions.map((option) => <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>)}</Select></FormControl>} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Watched status</InputLabel>
-                <Select label="Watched status" value={form.watchedStatus} onChange={(event) => updateForm('watchedStatus', event.target.value)}>
-                  {watchedOptions.map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Controller name="watchedStatus" control={control} render={({ field }) => <FormControl fullWidth><InputLabel>Watched status</InputLabel><Select {...field} value={field.value || ''} label="Watched status">{watchedOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}</Select></FormControl>} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <SuggestionField label="Condition" value={form.condition} options={conditionOptions} onChange={(value) => updateForm('condition', value)} />
+              <Controller name="condition" control={control} render={({ field }) => <SuggestionField label="Condition" value={field.value || ''} options={conditionOptions} onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <NameOptionField
-                label="Edition country"
-                value={form.countryEditionId}
-                options={countryOptions}
-                helperText="Country where this edition was released."
-                onChange={(value) => updateForm('countryEditionId', value)}
-              />
+              <Controller name="countryEditionId" control={control} render={({ field }) => <NameOptionField label="Edition country" value={field.value || ''} options={countryOptions} helperText="Country where this edition was released." onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Distributor" placeholder="e.g. Warner Bros." value={form.distributorId} onChange={(event) => updateForm('distributorId', event.target.value)} />
+              <Controller name="distributorId" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="e.g. Warner Bros." label="Distributor" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <SuggestionField label="Movie version" value={form.movieVersionId} options={movieVersionOptions} onChange={(value) => updateForm('movieVersionId', value)} />
+              <Controller name="movieVersionId" control={control} render={({ field }) => <SuggestionField label="Movie version" value={field.value || ''} options={movieVersionOptions} onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Collection name" placeholder="e.g. Sci-fi shelf" value={form.collectionId} onChange={(event) => updateForm('collectionId', event.target.value)} />
+              <Controller name="collectionId" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="e.g. Sci-fi shelf" label="Collection name" />} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth label="Storage location" placeholder="e.g. Living room · Shelf 2" value={form.locationId} onChange={(event) => updateForm('locationId', event.target.value)} />
+              <Controller name="locationId" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="e.g. Living room · Shelf 2" label="Storage location" />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <SuggestionField label="DVD / Blu-ray region" value={form.region} options={regionOptions} onChange={(value) => updateForm('region', value)} />
+              <Controller name="region" control={control} render={({ field }) => <SuggestionField label="DVD / Blu-ray region" value={field.value || ''} options={regionOptions} onChange={field.onChange} />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField fullWidth label="Purchase price" type="number" value={form.purchasePrice} onChange={(event) => updateForm('purchasePrice', event.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />
+              <Controller name="purchasePrice" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="number" label="Purchase price" InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField fullWidth label="Estimated value" type="number" value={form.estimatedValue} onChange={(event) => updateForm('estimatedValue', event.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />
+              <Controller name="estimatedValue" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="number" label="Estimated value" InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />} />
             </Grid>
             <Grid item xs={12}>
               <Accordion sx={{ width: '100%', background: 'rgba(11,19,33,0.75)' }}>
@@ -895,30 +901,23 @@ export function AddMoviePage() {
                 <AccordionDetails>
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={4}>
-                      <TextField fullWidth label="IMDb title ID" placeholder="e.g. tt0133093" value={form.imdbId} onChange={(event) => updateForm('imdbId', event.target.value)} />
+                      <Controller name="imdbId" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="e.g. tt0133093" label="IMDb title ID" />} />
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <TextField fullWidth label="IMDb link" placeholder="https://www.imdb.com/title/..." value={form.imdbUrl} onChange={(event) => updateForm('imdbUrl', event.target.value)} />
+                      <Controller name="imdbUrl" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="https://www.imdb.com/title/..." label="IMDb link" />} />
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <TextField fullWidth label="TMDb link" placeholder="https://www.themoviedb.org/movie/..." value={form.tmdbUrl} onChange={(event) => updateForm('tmdbUrl', event.target.value)} />
+                      <Controller name="tmdbUrl" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth placeholder="https://www.themoviedb.org/movie/..." label="TMDb link" />} />
                     </Grid>
                   </Grid>
                 </AccordionDetails>
               </Accordion>
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth multiline minRows={2} label="Edition notes" value={form.editionNotes} onChange={(event) => updateForm('editionNotes', event.target.value)} />
+              <Controller name="editionNotes" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth multiline minRows={2} label="Edition notes" />} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                type="date"
-                label="Watched date"
-                InputLabelProps={{ shrink: true }}
-                value={form.watchedDate}
-                onChange={(event) => updateForm('watchedDate', event.target.value)}
-              />
+              <Controller name="watchedDate" control={control} render={({ field }) => <TextField {...field} value={field.value || ''} fullWidth type="date" InputLabelProps={{ shrink: true }} label="Watched date" />} />
             </Grid>
           </Grid>
 
