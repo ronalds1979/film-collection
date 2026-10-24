@@ -1,6 +1,6 @@
 import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
-import PhotoCamera from '@mui/icons-material/PhotoCamera';
-import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
+import { PhotoCamera } from '@mui/icons-material';
+import { RotateRightRounded } from '@mui/icons-material';
 import { CoverUploadStatus } from '../types';
 
 type NamedOption = { id: string; name: string };
