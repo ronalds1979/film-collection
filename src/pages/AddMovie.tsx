@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { PhotoCamera } from '@mui/icons-material';
-import { ExpandMoreRounded } from '@mui/icons-material';
-import { Search as SearchIcon } from '@mui/icons-material';
+import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
+import SearchIcon from '@mui/icons-material/Search';
 import { Movie, Genre, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';

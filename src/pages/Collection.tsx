@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search as SearchIcon } from '@mui/icons-material';
-import { EditRounded } from '@mui/icons-material';
-import { ChevronLeftRounded } from '@mui/icons-material';
-import { ChevronRightRounded } from '@mui/icons-material';
+import SearchIcon from '@mui/icons-material/Search';
+import EditRounded from '@mui/icons-material/EditRounded';
+import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
+import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Movie, Genre, Edition } from '../types';
 import { API_BASE } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
