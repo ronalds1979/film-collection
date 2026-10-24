@@ -1,7 +1,6 @@
 import sharp from 'sharp';
 import { createWorker, PSM } from 'tesseract.js';
-import zxing from '@zxing/library';
-const {
+import {
   BinaryBitmap,
   Code128Reader,
   Code39Reader,
@@ -9,7 +8,7 @@ const {
   HybridBinarizer,
   ITFReader,
   RGBLuminanceSource,
-} = zxing;
+} from '@zxing/library';
 
 let workerPromise;
 
@@ -25,8 +24,8 @@ const getWorker = () => {
   return workerPromise;
 };
 
-export const preprocessBarcodeImage = async (imageBuffer) => {
-  const image = sharp(imageBuffer, { failOn: 'error' })
+export const preprocessBarcodeImage = async (imagePath) => {
+  const image = sharp(imagePath, { failOn: 'error' })
     .rotate()
     .resize({
       width: 2400,
@@ -43,14 +42,14 @@ export const preprocessBarcodeImage = async (imageBuffer) => {
   return image.toBuffer();
 };
 
-export const detectBarcode = async (imageBuffer) => {
+export const detectBarcode = async (imagePath) => {
   const readers = [
     EAN13Reader,
     Code128Reader,
     Code39Reader,
     ITFReader,
   ];
-  const orientedImage = await sharp(imageBuffer, { failOn: 'error' })
+  const orientedImage = await sharp(imagePath, { failOn: 'error' })
     .rotate()
     .resize({ width: 4000, height: 3200, fit: 'inside', withoutEnlargement: true })
     .png()
@@ -86,8 +85,8 @@ export const detectBarcode = async (imageBuffer) => {
   return null;
 };
 
-export const recognizeBarcode = async (imageBuffer) => {
-  const detectedBarcode = await detectBarcode(imageBuffer);
+export const recognizeBarcode = async (imagePath) => {
+  const detectedBarcode = await detectBarcode(imagePath);
   if (detectedBarcode) {
     return {
       barcode: detectedBarcode.value,
@@ -97,7 +96,7 @@ export const recognizeBarcode = async (imageBuffer) => {
     };
   }
 
-  const processedImage = await preprocessBarcodeImage(imageBuffer);
+  const processedImage = await preprocessBarcodeImage(imagePath);
   const worker = await getWorker();
   const { data } = await worker.recognize(processedImage);
   const barcode = extractBarcodeCandidates(data.text || '')[0] || '';
