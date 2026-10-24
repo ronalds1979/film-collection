@@ -150,7 +150,7 @@ export const ingestMovie = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Unable to ingest movie metadata.', error: String(error) });
+    res.status(500).json({ message: 'Unable to ingest movie metadata.' });
   }
 };
 
@@ -245,7 +245,7 @@ export const updateMovie = async (req, res) => {
     res.json({ message: 'Movie and edition updated successfully.', ...result });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Unable to update movie metadata.', error: String(error) });
+    res.status(500).json({ message: 'Unable to update movie metadata.' });
   }
 };
 
