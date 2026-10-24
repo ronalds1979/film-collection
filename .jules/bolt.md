@@ -1,0 +1,3 @@
+## 2024-05-19 - Extracted invariants and short-circuited array allocations in React renders
+**Learning:** Computations like `searchTerm.trim().toLowerCase()` inside a large `filter` or `map` callback allocate strings and perform work repeatedly during React renders (often in `useMemo`). Additionally, complex array creations (e.g. `[...].some()` or `.flatMap()`) inside loops are very expensive.
+**Action:** Extract loop invariants outside the `.filter()` callback. Always defer expensive string searching and array allocations behind cheaper boolean checks (like exact status matches) in list filtering functions.
