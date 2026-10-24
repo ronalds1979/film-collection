@@ -1,8 +1,8 @@
 import { useLocation, useNavigate, Route, Routes, Link as RouterLink } from 'react-router-dom';
 import { AppBar, Box, Button, Stack, Toolbar, Typography, BottomNavigation, BottomNavigationAction } from '@mui/material';
-import HomeRounded from '@mui/icons-material/HomeRounded';
-import AddCircleOutlineRounded from '@mui/icons-material/AddCircleOutlineRounded';
-import MovieRounded from '@mui/icons-material/MovieRounded';
+import { HomeRounded } from '@mui/icons-material';
+import { AddCircleOutlineRounded } from '@mui/icons-material';
+import { MovieRounded } from '@mui/icons-material';
 
 import { DashboardPage } from './pages/Dashboard';
 import { AddMoviePage } from './pages/AddMovie';
