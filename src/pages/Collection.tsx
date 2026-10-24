@@ -1,7 +1,8 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import SearchIcon from '@mui/icons-material/Search';
 import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
@@ -256,6 +257,17 @@ export function CollectionPage() {
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
 
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: displayedRows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 73,
+    overscan: 10,
+  });
+
+
+
   const filteredMovies = useMemo(() => movies.filter((movie) => {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const matchesSearch = !normalizedSearch || [
@@ -415,80 +427,99 @@ export function CollectionPage() {
             loadError={loadError}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
           />
-          <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Movie</TableCell>
-                <TableCell>Genre</TableCell>
-                <TableCell>Year</TableCell>
-                <TableCell>Edition</TableCell>
-                <TableCell>Barcode</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={1}>
-                      <CircularProgress size={18} />
-                      <span>Loading your collection...</span>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              )}
-              {loadError && (
-                <TableRow>
-                  <TableCell colSpan={7}>
-                    <Alert severity="error">{loadError}</Alert>
-                  </TableCell>
-                </TableRow>
-              )}
-              {displayedRows.map(({ movie, edition }) => (
-                <TableRow
-                  key={`${movie.id}-${edition?.id || 'movie'}`}
-                  hover
-                  onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell>
-                    <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {[movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{(movie.genres || []).map((genre) => genre.name).join(', ') || '—'}</TableCell>
-                  <TableCell>{movie.releaseYear || '—'}</TableCell>
-                  <TableCell>{edition ? `${formatLabel(edition.formatId)} · ${edition.editionYear || 'Year n/a'}` : 'No edition'}</TableCell>
-                  <TableCell>{edition?.barcode || '—'}</TableCell>
-                  <TableCell>
-                    {movie.favorite ? 'Favorite' : movie.watchedStatus || 'unwatched'}
-                    {movie.watchedDate ? ` · ${movie.watchedDate}` : ''}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      startIcon={<EditRounded />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && !loadError && !displayedRows.length && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          </TableContainer>
+          <Paper sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', borderRadius: 3, background: 'rgba(18,28,46,0.9)', overflow: 'hidden' }}>
+            <TableContainer>
+              <Table stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ width: '25%' }}>Movie</TableCell>
+                    <TableCell sx={{ width: '15%' }}>Genre</TableCell>
+                    <TableCell sx={{ width: '10%' }}>Year</TableCell>
+                    <TableCell sx={{ width: '20%' }}>Edition</TableCell>
+                    <TableCell sx={{ width: '10%' }}>Barcode</TableCell>
+                    <TableCell sx={{ width: '10%' }}>Status</TableCell>
+                    <TableCell sx={{ width: '10%' }} align="right">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+              </Table>
+            </TableContainer>
+
+            <Box ref={parentRef} sx={{ height: 600, overflow: 'auto' }}>
+              <Table>
+                <TableBody sx={{ display: 'block', position: 'relative', height: `${rowVirtualizer.getTotalSize()}px` }}>
+                  {isLoading && (
+                    <TableRow sx={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                      <TableCell colSpan={7} align="center" sx={{ borderBottom: 'none' }}>
+                        <Stack direction="row" justifyContent="center" alignItems="center" spacing={1}>
+                          <CircularProgress size={18} />
+                          <span>Loading your collection...</span>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {loadError && (
+                    <TableRow sx={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                      <TableCell colSpan={7} sx={{ borderBottom: 'none' }}>
+                        <Alert severity="error">{loadError}</Alert>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!isLoading && !loadError && !displayedRows.length && (
+                    <TableRow sx={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                      <TableCell colSpan={7} align="center" sx={{ borderBottom: 'none' }}>No catalog entries match these filters.</TableCell>
+                    </TableRow>
+                  )}
+
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const { movie, edition } = displayedRows[virtualRow.index];
+                    return (
+                      <TableRow
+                        key={`${movie.id}-${edition?.id || 'movie'}`}
+                        hover
+                        onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+                        sx={{
+                          cursor: 'pointer',
+                          display: 'table',
+                          width: '100%',
+                          tableLayout: 'fixed',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <TableCell sx={{ width: '25%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <Typography fontWeight={700} noWrap>{movie.alternativeTitle || movie.title}</Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {[movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ width: '15%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(movie.genres || []).map((genre) => genre.name).join(', ') || '—'}</TableCell>
+                        <TableCell sx={{ width: '10%' }}>{movie.releaseYear || '—'}</TableCell>
+                        <TableCell sx={{ width: '20%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{edition ? `${formatLabel(edition.formatId)} · ${edition.editionYear || 'Year n/a'}` : 'No edition'}</TableCell>
+                        <TableCell sx={{ width: '10%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{edition?.barcode || '—'}</TableCell>
+                        <TableCell sx={{ width: '10%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {movie.favorite ? 'Favorite' : movie.watchedStatus || 'unwatched'}
+                        </TableCell>
+                        <TableCell sx={{ width: '10%' }} align="right">
+                          <Button
+                            size="small"
+                            startIcon={<EditRounded />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Box>
+          </Paper>
         </>
         )}
       </Stack>
