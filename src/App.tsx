@@ -55,6 +55,7 @@ import MovieRounded from '@mui/icons-material/MovieRounded';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
 import SearchIcon from '@mui/icons-material/Search';
+import { CloseRounded } from '@mui/icons-material';
 
 const API_BASE = '/api';
 
@@ -1645,7 +1646,16 @@ function CollectionPage() {
               label="Search title, original title, or alternative title"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
+                      <CloseRounded fontSize="inherit" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              }}
             />
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
               <InputLabel>Watched status</InputLabel>
