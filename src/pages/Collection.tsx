@@ -269,21 +269,37 @@ export function CollectionPage() {
     };
   }, []);
 
-  const filteredMovies = useMemo(() => movies.filter((movie) => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const matchesSearch = !normalizedSearch || [
-        movie.title,
-        movie.originalTitle,
-        movie.alternativeTitle,
-        movie.notes,
-        ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
-      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
-      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
-      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
-      return matchesSearch && matchesStatus && matchesFavorite && matchesUnwatched && matchesGenre;
-    }), [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+  const filteredMovies = useMemo(() => {
+    // ⚡ Bolt: Extract loop invariants outside the filter callback
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const hasSearch = Boolean(normalizedSearch);
+    const filterByFavorites = collectionView === 'favorites';
+    const filterByUnwatched = collectionView === 'unwatched';
+    const hasStatusFilter = statusFilter !== 'all';
+    const hasGenreFilter = genreFilter !== 'all';
+
+    return movies.filter((movie) => {
+      // ⚡ Bolt: Short-circuit evaluation for cheap boolean checks first
+      if (filterByFavorites && !movie.favorite) return false;
+      if (filterByUnwatched && (movie.watchedStatus || 'unwatched') !== 'unwatched') return false;
+      if (hasStatusFilter && movie.watchedStatus !== statusFilter) return false;
+      if (hasGenreFilter && !movie.genres?.some((genre) => genre.id === genreFilter)) return false;
+
+      // ⚡ Bolt: Defer expensive string manipulations and array operations
+      if (hasSearch) {
+        const matchesSearch = [
+          movie.title,
+          movie.originalTitle,
+          movie.alternativeTitle,
+          movie.notes,
+          ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
+        ].some((value) => value?.toLowerCase().includes(normalizedSearch));
+        if (!matchesSearch) return false;
+      }
+
+      return true;
+    });
+  }, [collectionView, genreFilter, movies, searchTerm, statusFilter]);
 
   const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
     const editions = movie.editions || [];
