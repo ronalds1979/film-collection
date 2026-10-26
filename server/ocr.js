@@ -119,16 +119,19 @@ export const extractBarcodeCandidates = (text) => {
 };
 
 export const isValidRetailBarcode = (value) => {
-  if (!/^\d+$/.test(value) || ![8, 12, 13, 14].includes(value.length)) {
+  const len = value.length;
+  if ((len !== 8 && len !== 12 && len !== 13 && len !== 14) || !/^\d+$/.test(value)) {
     return false;
   }
 
-  const digits = value.split('').map(Number);
-  const checkDigit = digits.pop();
-  const weightedSum = digits
-    .reverse()
-    .reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 3 : 1), 0);
+  let weightedSum = 0;
+  let multiplier = 3;
+  for (let i = len - 2; i >= 0; i--) {
+    weightedSum += (value.charCodeAt(i) - 48) * multiplier;
+    multiplier = multiplier === 3 ? 1 : 3;
+  }
 
+  const checkDigit = value.charCodeAt(len - 1) - 48;
   return (10 - (weightedSum % 10)) % 10 === checkDigit;
 };
 
