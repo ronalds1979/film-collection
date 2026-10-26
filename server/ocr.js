@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { createWorker, PSM } from 'tesseract.js';
-import {
+import zxing from '@zxing/library';
+const {
   BinaryBitmap,
   Code128Reader,
   Code39Reader,
@@ -8,7 +9,7 @@ import {
   HybridBinarizer,
   ITFReader,
   RGBLuminanceSource,
-} from '@zxing/library';
+} = zxing;
 
 let workerPromise;
 

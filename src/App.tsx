@@ -1578,21 +1578,34 @@ function CollectionPage() {
     };
   }, []);
 
-  const filteredMovies = useMemo(() => movies.filter((movie) => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const matchesSearch = !normalizedSearch || [
+  const filteredMovies = useMemo(() => {
+    // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return movies.filter((movie) => {
+      // ⚡ Bolt: Check cheap boolean/enum conditions first to short-circuit
+      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
+      if (!matchesStatus) return false;
+
+      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
+      if (!matchesFavorite) return false;
+
+      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
+      if (!matchesUnwatched) return false;
+
+      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
+      if (!matchesGenre) return false;
+
+      // ⚡ Bolt: Defer expensive array creation and string matching until necessary
+      return !normalizedSearch || [
         movie.title,
         movie.originalTitle,
         movie.alternativeTitle,
         movie.notes,
         ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
       ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
-      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
-      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
-      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
-      return matchesSearch && matchesStatus && matchesFavorite && matchesUnwatched && matchesGenre;
-    }), [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+    });
+  }, [collectionView, genreFilter, movies, searchTerm, statusFilter]);
 
   const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
     const editions = movie.editions || [];
