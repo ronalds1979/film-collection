@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
+import ClearRounded from '@mui/icons-material/ClearRounded';
 import { Movie, Genre, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
@@ -612,7 +613,22 @@ export function AddMoviePage() {
             </Typography>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Movie title" value={form.title} onChange={(event) => updateForm('title', event.target.value)} required />
+                <TextField
+                  fullWidth
+                  label="Movie title"
+                  value={form.title}
+                  onChange={(event) => updateForm('title', event.target.value)}
+                  required
+                  InputProps={{
+                    endAdornment: form.title ? (
+                      <InputAdornment position="end">
+                        <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
+                          <ClearRounded fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} />
@@ -624,6 +640,15 @@ export function AddMoviePage() {
                   value={form.barcode}
                   onChange={(event) => updateForm('barcode', event.target.value)}
                   helperText={form.barcode ? (isValidRetailBarcode(form.barcode) ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
+                  InputProps={{
+                    endAdornment: form.barcode ? (
+                      <InputAdornment position="end">
+                        <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
+                          <ClearRounded fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
                 />
               </Grid>
               <Grid item xs={12} md={7}>
