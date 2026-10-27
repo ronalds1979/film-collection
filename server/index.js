@@ -270,7 +270,7 @@ app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
 app.use((error, _req, res, _next) => {
   console.error('Request failed', error);
   const status = error instanceof multer.MulterError ? 400 : 415;
-  res.status(status).json({ success: false, message: error.message || 'The request could not be processed.' });
+  res.status(status).json({ success: false, message: 'The request could not be processed.' });
 });
 
 app.post('/api/ingest', async (req, res) => {
