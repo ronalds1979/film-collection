@@ -9,7 +9,7 @@ import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Summary, Movie, Genre, Edition } from '../types';
-import { API_BASE } from '../utils/helpers';
+import { API_BASE, baseCollator } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
 
 function formatLabel(formatId?: string | null) {
@@ -41,7 +41,7 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
   const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title).localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(left.alternativeTitle || left.title, right.alternativeTitle || right.title)),
     [movies],
   );
 
