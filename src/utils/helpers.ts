@@ -1,6 +1,7 @@
 import { UploadedCover } from '../types';
 
 export const API_BASE = '/api';
+export const baseCollator = new Intl.Collator(undefined, { sensitivity: "base" });
 export const pendingCoversStorageKey = 'film-collection-pending-covers';
 export const pendingCoverDatabaseName = 'film-collection-intake';
 export const pendingCoverStoreName = 'pending-covers';

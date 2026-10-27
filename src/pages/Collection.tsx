@@ -7,7 +7,7 @@ import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Movie, Genre, Edition } from '../types';
-import { API_BASE } from '../utils/helpers';
+import { API_BASE, baseCollator } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
 
 function formatLabel(formatId?: string | null) {
@@ -172,8 +172,10 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const sortedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title)
-      .localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(
+      left.alternativeTitle || left.title,
+      right.alternativeTitle || right.title
+    )),
     [movies],
   );
 
@@ -306,8 +308,10 @@ export function CollectionPage() {
     }
     return [{ movie, edition: editions[0] }];
   }).sort((left, right) => {
-    const titleOrder = (left.movie.alternativeTitle || left.movie.title)
-      .localeCompare(right.movie.alternativeTitle || right.movie.title, undefined, { sensitivity: 'base' });
+    const titleOrder = baseCollator.compare(
+      left.movie.alternativeTitle || left.movie.title,
+      right.movie.alternativeTitle || right.movie.title
+    );
     if (titleOrder !== 0) return titleOrder;
     return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
       || (left.edition?.id || 0) - (right.edition?.id || 0);

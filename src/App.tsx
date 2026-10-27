@@ -57,6 +57,8 @@ import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
 
+import { baseCollator } from './utils/helpers';
+
 const API_BASE = '/api';
 
 const formatOptions = [
@@ -515,7 +517,7 @@ function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
   const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title).localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(left.alternativeTitle || left.title, right.alternativeTitle || right.title)),
     [movies],
   );
 
@@ -1272,7 +1274,7 @@ function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {[...searchResults].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })).map((result, index) => (
+                {[...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)).map((result, index) => (
                   <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                       <Box>
@@ -1615,8 +1617,10 @@ function CollectionPage() {
     }
     return [{ movie, edition: editions[0] }];
   }).sort((left, right) => {
-    const titleOrder = (left.movie.alternativeTitle || left.movie.title)
-      .localeCompare(right.movie.alternativeTitle || right.movie.title, undefined, { sensitivity: 'base' });
+    const titleOrder = baseCollator.compare(
+      left.movie.alternativeTitle || left.movie.title,
+      right.movie.alternativeTitle || right.movie.title
+    );
     if (titleOrder !== 0) return titleOrder;
     return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
       || (left.edition?.id || 0) - (right.edition?.id || 0);
@@ -1919,8 +1923,10 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const sortedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title)
-      .localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(
+      left.alternativeTitle || left.title,
+      right.alternativeTitle || right.title
+    )),
     [movies],
   );
 

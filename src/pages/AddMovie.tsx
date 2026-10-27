@@ -5,7 +5,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
 import { Movie, Genre, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
-import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode } from '../utils/helpers';
+import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
 import { formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
@@ -680,7 +680,7 @@ export function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {[...searchResults].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })).map((result, index) => (
+                {[...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)).map((result, index) => (
                   <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                       <Box>
