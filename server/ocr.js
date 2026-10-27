@@ -43,6 +43,20 @@ export const preprocessBarcodeImage = async (imagePath) => {
   return image.toBuffer();
 };
 
+const tryDecodeBitmap = (bitmap, readers) => {
+  for (const Reader of readers) {
+    try {
+      const result = new Reader().decode(bitmap);
+      return { value: result.getText(), format: result.getBarcodeFormat().toString() };
+    } catch (error) {
+      if (!['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
+        throw error;
+      }
+    }
+  }
+  return null;
+};
+
 export const detectBarcode = async (imagePath) => {
   const readers = [
     EAN13Reader,
@@ -71,15 +85,9 @@ export const detectBarcode = async (imagePath) => {
     );
     const bitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
 
-    for (const Reader of readers) {
-      try {
-        const result = new Reader().decode(bitmap);
-        return { value: result.getText(), format: result.getBarcodeFormat().toString() };
-      } catch (error) {
-        if (!['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
-          throw error;
-        }
-      }
+    const result = tryDecodeBitmap(bitmap, readers);
+    if (result) {
+      return result;
     }
   }
 
