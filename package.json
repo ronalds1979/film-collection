@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm:server:dev\" \"npm:client:dev\"",
     "server:dev": "node --env-file=.env --watch server/index.js",
     "client:dev": "vite --host 0.0.0.0 --port 5173",
-    "test": "node --test --test-concurrency=1 tests/ocr.integration.test.js tests/tmdb-auth.test.js && node tests/run-e2e.js",
+    "test": "node --test --test-concurrency=1 tests/ocr.integration.test.js tests/tmdb-auth.test.js tests/controllers/movieController.test.js && node tests/run-e2e.js",
     "test:tmdb": "node --test --test-concurrency=1 tests/tmdb-auth.test.js",
     "test:e2e": "node tests/run-e2e.js",
     "test:ocr": "node --test tests/ocr.integration.test.js",
