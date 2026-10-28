@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState , useDeferredValue } from 'react';
 import { Link as RouterLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Accordion,
@@ -1561,6 +1561,7 @@ function CollectionPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [genreError, setGenreError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
@@ -1607,7 +1608,7 @@ function CollectionPage() {
 
   const filteredMovies = useMemo(() => {
     // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
 
     return movies.filter((movie) => {
       // ⚡ Bolt: Check cheap boolean/enum conditions first to short-circuit
@@ -1632,7 +1633,7 @@ function CollectionPage() {
         ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
       ].some((value) => value?.toLowerCase().includes(normalizedSearch));
     });
-  }, [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+  }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
   const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
     const editions = movie.editions || [];
