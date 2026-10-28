@@ -321,6 +321,22 @@ test('mobile intake reads barcodes, enriches titles, and saves front/back covers
     assert.equal(updatedPayload.edition.frontCoverPath, uploadedCovers.front.path, 'omitted cover paths must be preserved');
     assert.equal(updatedPayload.edition.backCoverPath, uploadedCovers.back.path, 'omitted cover paths must be preserved');
 
+    const invalidMovieIdUpdate1 = await fetch(`${baseUrl}/api/movies/invalid-id`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editionId: storedMovie.editions[0].id, title: 'Valid title' }),
+    });
+    assert.equal(invalidMovieIdUpdate1.status, 400);
+    assert.equal((await invalidMovieIdUpdate1.json()).message, 'A valid movie ID is required.');
+
+    const invalidMovieIdUpdate2 = await fetch(`${baseUrl}/api/movies/0`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editionId: storedMovie.editions[0].id, title: 'Valid title' }),
+    });
+    assert.equal(invalidMovieIdUpdate2.status, 400);
+    assert.equal((await invalidMovieIdUpdate2.json()).message, 'A valid movie ID is required.');
+
     const invalidEditionUpdate = await fetch(`${baseUrl}/api/movies/${storedMovie.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
