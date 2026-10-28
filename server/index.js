@@ -258,7 +258,7 @@ app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
     res.status(500).json({
       success: false,
       requestId,
-      message: `Barcode processing failed (${diagnostic.name}${diagnostic.code ? `/${diagnostic.code}` : ''}). Try another image or enter the barcode manually. If it repeats, report reference ${requestId}.`,
+      message: `Barcode processing failed. Try another image or enter the barcode manually. If it repeats, report reference ${requestId}.`,
     });
   } finally {
     await fs.promises.unlink(req.file.path).catch((error) => {
