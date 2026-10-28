@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef , useDeferredValue } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
@@ -228,6 +228,7 @@ export function CollectionPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [genreError, setGenreError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
@@ -274,7 +275,7 @@ export function CollectionPage() {
 
   const filteredMovies = useMemo(() => {
     // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
 
     return movies.filter((movie) => {
       // ⚡ Bolt: Check cheap boolean/enum conditions first to short-circuit
@@ -299,7 +300,7 @@ export function CollectionPage() {
         ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
       ].some((value) => value?.toLowerCase().includes(normalizedSearch));
     });
-  }, [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+  }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
   const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
     const editions = movie.editions || [];
