@@ -291,14 +291,19 @@ export function CollectionPage() {
       const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
       if (!matchesGenre) return false;
 
-      // ⚡ Bolt: Defer expensive array creation and string matching until necessary
-      return !normalizedSearch || [
-        movie.title,
-        movie.originalTitle,
-        movie.alternativeTitle,
-        movie.notes,
-        ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
+      // ⚡ Bolt: Defer expensive string matching and avoid array allocations
+      if (!normalizedSearch) return true;
+      return (
+        movie.title?.toLowerCase().includes(normalizedSearch) ||
+        movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
+        movie.alternativeTitle?.toLowerCase().includes(normalizedSearch) ||
+        movie.notes?.toLowerCase().includes(normalizedSearch) ||
+        (movie.editions && movie.editions.some(edition =>
+          edition.barcode?.toLowerCase().includes(normalizedSearch) ||
+          edition.catalogNumber?.toLowerCase().includes(normalizedSearch) ||
+          edition.distributorId?.toLowerCase().includes(normalizedSearch)
+        ))
+      );
     });
   }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
