@@ -1621,40 +1621,67 @@ function CollectionPage() {
       const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
       if (!matchesUnwatched) return false;
 
-      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
+      let matchesGenre = genreFilter === 'all';
+      if (!matchesGenre && movie.genres) {
+        for (let i = 0; i < movie.genres.length; i++) {
+          if (movie.genres[i].id === genreFilter) {
+            matchesGenre = true;
+            break;
+          }
+        }
+      }
       if (!matchesGenre) return false;
 
       // ⚡ Bolt: Defer expensive string matching and avoid array allocations
       if (!normalizedSearch) return true;
-      return (
+      if (
         movie.title?.toLowerCase().includes(normalizedSearch) ||
         movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
         movie.alternativeTitle?.toLowerCase().includes(normalizedSearch) ||
-        movie.notes?.toLowerCase().includes(normalizedSearch) ||
-        (movie.editions && movie.editions.some(edition =>
-          edition.barcode?.toLowerCase().includes(normalizedSearch) ||
-          edition.catalogNumber?.toLowerCase().includes(normalizedSearch) ||
-          edition.distributorId?.toLowerCase().includes(normalizedSearch)
-        ))
-      );
+        movie.notes?.toLowerCase().includes(normalizedSearch)
+      ) {
+        return true;
+      }
+
+      if (movie.editions) {
+        for (let i = 0; i < movie.editions.length; i++) {
+          const edition = movie.editions[i];
+          if (
+            edition.barcode?.toLowerCase().includes(normalizedSearch) ||
+            edition.catalogNumber?.toLowerCase().includes(normalizedSearch) ||
+            edition.distributorId?.toLowerCase().includes(normalizedSearch)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
     });
   }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
-  const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
-    const editions = movie.editions || [];
-    if (collectionView === 'editions') {
-      return editions.map((edition) => ({ movie, edition }));
+  const displayedRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < filteredMovies.length; i++) {
+      const movie = filteredMovies[i];
+      const editions = movie.editions || [];
+      if (collectionView === 'editions') {
+        for (let j = 0; j < editions.length; j++) {
+          rows.push({ movie, edition: editions[j] });
+        }
+      } else {
+        rows.push({ movie, edition: editions[0] });
+      }
     }
-    return [{ movie, edition: editions[0] }];
-  }).sort((left, right) => {
-    const titleOrder = baseCollator.compare(
-      left.movie.alternativeTitle || left.movie.title,
-      right.movie.alternativeTitle || right.movie.title
-    );
-    if (titleOrder !== 0) return titleOrder;
-    return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
-      || (left.edition?.id || 0) - (right.edition?.id || 0);
-  }), [collectionView, filteredMovies]);
+    return rows.sort((left, right) => {
+      const titleOrder = baseCollator.compare(
+        left.movie.alternativeTitle || left.movie.title,
+        right.movie.alternativeTitle || right.movie.title
+      );
+      if (titleOrder !== 0) return titleOrder;
+      return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
+        || (left.edition?.id || 0) - (right.edition?.id || 0);
+    });
+  }, [collectionView, filteredMovies]);
 
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
