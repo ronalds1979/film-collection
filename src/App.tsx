@@ -1685,15 +1685,43 @@ function CollectionPage() {
 
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
-      const selectedGenre = genres.find((genre) => genre.id === genreFilter);
+      let selectedGenre = undefined;
+      for (let i = 0; i < genres.length; i++) {
+        if (genres[i].id === genreFilter) {
+          selectedGenre = genres[i];
+          break;
+        }
+      }
       return selectedGenre ? [{ genre: selectedGenre, movies: filteredMovies }] : [];
     }
-    return genres
-      .map((genre) => ({
-        genre,
-        movies: filteredMovies.filter((movie) => movie.genres?.some((movieGenre) => movieGenre.id === genre.id)),
-      }))
-      .filter((shelf) => shelf.movies.length > 0);
+
+    const shelves = [];
+    for (let g = 0; g < genres.length; g++) {
+      const genre = genres[g];
+      const shelfMovies = [];
+
+      for (let m = 0; m < filteredMovies.length; m++) {
+        const movie = filteredMovies[m];
+        if (!movie.genres) continue;
+
+        let hasGenre = false;
+        for (let mg = 0; mg < movie.genres.length; mg++) {
+          if (movie.genres[mg].id === genre.id) {
+            hasGenre = true;
+            break;
+          }
+        }
+
+        if (hasGenre) {
+          shelfMovies.push(movie);
+        }
+      }
+
+      if (shelfMovies.length > 0) {
+        shelves.push({ genre, movies: shelfMovies });
+      }
+    }
+    return shelves;
   }, [filteredMovies, genreFilter, genres]);
 
   return (
