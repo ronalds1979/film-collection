@@ -304,24 +304,11 @@ export function CollectionPage() {
       if (
         movie.title?.toLowerCase().includes(normalizedSearch) ||
         movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
-        movie.alternativeTitle?.toLowerCase().includes(normalizedSearch) ||
-        movie.notes?.toLowerCase().includes(normalizedSearch)
+        movie.alternativeTitle?.toLowerCase().includes(normalizedSearch)
       ) {
         return true;
       }
 
-      if (movie.editions) {
-        for (let i = 0; i < movie.editions.length; i++) {
-          const edition = movie.editions[i];
-          if (
-            edition.barcode?.toLowerCase().includes(normalizedSearch) ||
-            edition.catalogNumber?.toLowerCase().includes(normalizedSearch) ||
-            edition.distributorId?.toLowerCase().includes(normalizedSearch)
-          ) {
-            return true;
-          }
-        }
-      }
       return false;
     });
   }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
