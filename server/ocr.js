@@ -49,9 +49,10 @@ const tryDecodeBitmap = (bitmap, readers) => {
       const result = new Reader().decode(bitmap);
       return { value: result.getText(), format: result.getBarcodeFormat().toString() };
     } catch (error) {
-      if (!['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
-        throw error;
+      if (['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
+        continue;
       }
+      throw error;
     }
   }
   return null;
