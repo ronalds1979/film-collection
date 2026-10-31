@@ -13,3 +13,7 @@
 ## 2024-05-19 - Avoid Array Allocations in High-Frequency Loops
 **Learning:** Using array-allocating methods like `.flatMap()` or spreading into new arrays `[...]` inside the `.filter()` callback of a `useMemo` hook causes significant performance degradation due to constant garbage collection, especially on large lists.
 **Action:** Replace array creation and `.some()` checks with direct sequential logical OR (`||`) evaluations and standard `for` loops where necessary to eliminate allocation overhead and fully utilize short-circuiting.
+
+## 2026-10-26 - O(N²) to O(N) Hash Map Lookup in React useMemo
+**Learning:** Reconstructing grouped lists via nested loops inside `useMemo` (e.g., iterating over movies inside a loop over genres, O(Genres * Movies)) creates severe performance degradation for large datasets.
+**Action:** Replace nested search loops with a single pass building a `Map` (Hash Map) and grouping items. This changes the time complexity from O(N²) to O(N), measurably reducing execution time and main thread blocking.

@@ -1682,32 +1682,33 @@ function CollectionPage() {
       return selectedGenre ? [{ genre: selectedGenre, movies: filteredMovies }] : [];
     }
 
+    // ⚡ Bolt: Replace O(N²) nested loops with O(N) hash map lookup
     const shelves = [];
+    const shelfMoviesMap = new Map<string, Movie[]>();
+
+    for (let m = 0; m < filteredMovies.length; m++) {
+      const movie = filteredMovies[m];
+      if (!movie.genres) continue;
+
+      for (let mg = 0; mg < movie.genres.length; mg++) {
+        const genreId = movie.genres[mg].id;
+        let shelf = shelfMoviesMap.get(genreId);
+        if (!shelf) {
+          shelf = [];
+          shelfMoviesMap.set(genreId, shelf);
+        }
+        shelf.push(movie);
+      }
+    }
+
     for (let g = 0; g < genres.length; g++) {
       const genre = genres[g];
-      const shelfMovies = [];
-
-      for (let m = 0; m < filteredMovies.length; m++) {
-        const movie = filteredMovies[m];
-        if (!movie.genres) continue;
-
-        let hasGenre = false;
-        for (let mg = 0; mg < movie.genres.length; mg++) {
-          if (movie.genres[mg].id === genre.id) {
-            hasGenre = true;
-            break;
-          }
-        }
-
-        if (hasGenre) {
-          shelfMovies.push(movie);
-        }
-      }
-
-      if (shelfMovies.length > 0) {
+      const shelfMovies = shelfMoviesMap.get(genre.id);
+      if (shelfMovies && shelfMovies.length > 0) {
         shelves.push({ genre, movies: shelfMovies });
       }
     }
+
     return shelves;
   }, [filteredMovies, genreFilter, genres]);
 
