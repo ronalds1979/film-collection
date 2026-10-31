@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import multer from 'multer';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -108,6 +109,7 @@ const toTmdbResult = (item) => ({
 });
 
 app.use(cors());
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: '20mb' }));
 app.use('/uploads', express.static(uploadsDir));
 
