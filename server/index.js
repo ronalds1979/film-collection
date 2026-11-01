@@ -117,15 +117,19 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
 });
 
-app.get('/api/summary', async (_req, res) => {
-  const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
-    prisma.movie.count(),
-    prisma.edition.count(),
-    prisma.movie.count({ where: { favorite: true } }),
-    prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
-  ]);
+app.get('/api/summary', async (_req, res, next) => {
+  try {
+    const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
+      prisma.movie.count(),
+      prisma.edition.count(),
+      prisma.movie.count({ where: { favorite: true } }),
+      prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
+    ]);
 
-  res.json({ totalMovies, totalEditions, favorites, unwatched });
+    res.json({ totalMovies, totalEditions, favorites, unwatched });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/genres', async (_req, res) => {
@@ -139,35 +143,47 @@ app.get('/api/genres', async (_req, res) => {
   }
 });
 
-app.get('/api/movies', async (_req, res) => {
-  const movies = await prisma.movie.findMany({
-    include: { editions: true, genres: true },
-    orderBy: { title: 'asc' },
-  });
-  res.json(movies);
+app.get('/api/movies', async (_req, res, next) => {
+  try {
+    const movies = await prisma.movie.findMany({
+      include: { editions: true, genres: true },
+      orderBy: { title: 'asc' },
+    });
+    res.json(movies);
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/editions', async (_req, res) => {
-  const editions = await prisma.edition.findMany({
-    include: { movie: true },
-    orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
-  });
-  res.json(editions);
+app.get('/api/editions', async (_req, res, next) => {
+  try {
+    const editions = await prisma.edition.findMany({
+      include: { movie: true },
+      orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
+    });
+    res.json(editions);
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/export', async (_req, res) => {
-  const movies = await prisma.movie.findMany({
-    include: { editions: true, genres: true },
-    orderBy: { title: 'asc' },
-  });
+app.get('/api/export', async (_req, res, next) => {
+  try {
+    const movies = await prisma.movie.findMany({
+      include: { editions: true, genres: true },
+      orderBy: { title: 'asc' },
+    });
 
-  res.setHeader('Content-Disposition', 'attachment; filename="film-collection-export.json"');
-  res.json({
-    formatVersion: 1,
-    exportedAt: new Date().toISOString(),
-    currency: 'EUR',
-    movies,
-  });
+    res.setHeader('Content-Disposition', 'attachment; filename="film-collection-export.json"');
+    res.json({
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      currency: 'EUR',
+      movies,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
@@ -271,7 +287,7 @@ app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
 
 app.use((error, _req, res, _next) => {
   console.error('Request failed', error);
-  const status = error instanceof multer.MulterError ? 400 : 415;
+  const status = error instanceof multer.MulterError ? 400 : (error.status || 500);
   res.status(status).json({ success: false, message: 'The request could not be processed.' });
 });
 
