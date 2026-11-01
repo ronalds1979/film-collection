@@ -288,6 +288,15 @@ export function CollectionPage() {
       const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
       if (!matchesUnwatched) return false;
 
+      // ⚡ Bolt: Perform cheap title checks before the nested genre loop to preserve short-circuiting
+      if (normalizedSearch) {
+        const matchesSearch =
+          movie.title?.toLowerCase().includes(normalizedSearch) ||
+          movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
+          movie.alternativeTitle?.toLowerCase().includes(normalizedSearch);
+        if (!matchesSearch) return false;
+      }
+
       let matchesGenre = genreFilter === 'all';
       if (!matchesGenre && movie.genres) {
         for (let i = 0; i < movie.genres.length; i++) {
@@ -299,17 +308,7 @@ export function CollectionPage() {
       }
       if (!matchesGenre) return false;
 
-      // ⚡ Bolt: Defer expensive string matching and avoid array allocations
-      if (!normalizedSearch) return true;
-      if (
-        movie.title?.toLowerCase().includes(normalizedSearch) ||
-        movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
-        movie.alternativeTitle?.toLowerCase().includes(normalizedSearch)
-      ) {
-        return true;
-      }
-
-      return false;
+      return true;
     });
   }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
