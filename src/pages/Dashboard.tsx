@@ -110,14 +110,18 @@ export function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {alphabetizedMovies.slice(0, 4).map((movie) => (
-                  <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
-                    <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
-                    </Typography>
-                  </Box>
-                ))}
+                {alphabetizedMovies.length === 0 ? (
+                  <Typography color="text.secondary">No movies added yet.</Typography>
+                ) : (
+                  alphabetizedMovies.slice(0, 4).map((movie) => (
+                    <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
+                      <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
+                      </Typography>
+                    </Box>
+                  ))
+                )}
               </Stack>
             </Paper>
           </Grid>
