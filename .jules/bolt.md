@@ -17,3 +17,4 @@
 ## 2026-10-26 - O(N²) to O(N) Hash Map Lookup in React useMemo
 **Learning:** Reconstructing grouped lists via nested loops inside `useMemo` (e.g., iterating over movies inside a loop over genres, O(Genres * Movies)) creates severe performance degradation for large datasets.
 **Action:** Replace nested search loops with a single pass building a `Map` (Hash Map) and grouping items. This changes the time complexity from O(N²) to O(N), measurably reducing execution time and main thread blocking.
+## 2026-10-26 - Memoize Array Sorts\n**Learning:** To prevent unnecessary array allocations and redundant O(N log N) sorting operations on every render cycle, always extract and wrap inline array sorts (e.g., `[...array].sort(...)`) within React components in a `useMemo` hook.\n**Action:** Use `useMemo` for any `[...array].sort(...)` in React components, like what was done for sorting `searchResults`.
