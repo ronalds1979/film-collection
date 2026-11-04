@@ -728,14 +728,18 @@ const lookupMetadata = async (query) => {
   };
 };
 
-app.get('/api/search', async (req, res) => {
-  const query = String(req.query.query || '').trim();
-  if (!query) {
-    return res.status(400).json({ message: 'A movie title search query is required.' });
-  }
+app.get('/api/search', async (req, res, next) => {
+  try {
+    const query = String(req.query.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ message: 'A movie title search query is required.' });
+    }
 
-  const lookup = await lookupMetadata(query);
-  return res.status(lookup.status).json(lookup.payload);
+    const lookup = await lookupMetadata(query);
+    return res.status(lookup.status).json(lookup.payload);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/metadata/barcode', async (req, res) => {
