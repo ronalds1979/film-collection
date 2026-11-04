@@ -14,11 +14,12 @@ function formatLabel(formatId?: string | null) {
   return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Format n/a';
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
+function CollectionMobileCards({ rows, isLoading, loadError, onSelect, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
   onSelect: (movie: Movie, edition?: Edition) => void;
+  onClearFilters?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -36,7 +37,12 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   if (!rows.length) {
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary">No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: onClearFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        {onClearFilters && (
+          <Button variant="outlined" size="small" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </Paper>
     );
   }
@@ -232,6 +238,12 @@ export function CollectionPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setGenreFilter('all');
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
@@ -491,7 +503,10 @@ export function CollectionPage() {
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
               <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary">No movies match these filters.</Typography>
+                <Typography color="text.secondary" sx={{ mb: 2 }}>No movies match these filters.</Typography>
+                <Button variant="outlined" onClick={handleClearFilters}>
+                  Clear filters
+                </Button>
               </Paper>
             )}
           </Stack>
@@ -502,6 +517,7 @@ export function CollectionPage() {
             isLoading={isLoading}
             loadError={loadError}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            onClearFilters={handleClearFilters}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table>
@@ -571,7 +587,12 @@ export function CollectionPage() {
               ))}
               {!isLoading && !loadError && !displayedRows.length && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="text.secondary" sx={{ mb: 2 }}>No catalog entries match these filters.</Typography>
+                    <Button variant="outlined" size="small" onClick={handleClearFilters}>
+                      Clear filters
+                    </Button>
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
