@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -55,6 +55,12 @@ export function AddMoviePage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
+
+  // ⚡ Bolt: Extract inline array sort into useMemo to prevent O(N log N) sorting on every render
+  const sortedSearchResults = useMemo(
+    () => [...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)),
+    [searchResults]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -705,7 +711,7 @@ export function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {[...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)).map((result, index) => (
+                {sortedSearchResults.map((result, index) => (
                   <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                       <Box>
