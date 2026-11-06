@@ -1824,7 +1824,16 @@ function CollectionPage() {
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
               <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary">No movies match these filters.</Typography>
+                <Typography color="text.secondary" sx={{ mb: (searchTerm || statusFilter !== 'all' || genreFilter !== 'all') ? 2 : 0 }}>No movies match these filters.</Typography>
+                {(searchTerm || statusFilter !== 'all' || genreFilter !== 'all') && (
+                  <Button variant="outlined" onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('all');
+                    setGenreFilter('all');
+                  }}>
+                    Clear filters
+                  </Button>
+                )}
               </Paper>
             )}
           </Stack>
@@ -1834,6 +1843,12 @@ function CollectionPage() {
             rows={displayedRows}
             isLoading={isLoading}
             loadError={loadError}
+            hasActiveFilters={Boolean(searchTerm || statusFilter !== 'all' || genreFilter !== 'all')}
+            onClearFilters={() => {
+              setSearchTerm('');
+              setStatusFilter('all');
+              setGenreFilter('all');
+            }}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
@@ -1904,7 +1919,18 @@ function CollectionPage() {
               ))}
               {!isLoading && !loadError && !displayedRows.length && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="text.secondary" sx={{ mb: (searchTerm || statusFilter !== 'all' || genreFilter !== 'all') ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+                    {(searchTerm || statusFilter !== 'all' || genreFilter !== 'all') && (
+                      <Button variant="outlined" onClick={() => {
+                        setSearchTerm('');
+                        setStatusFilter('all');
+                        setGenreFilter('all');
+                      }}>
+                        Clear filters
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -1917,10 +1943,12 @@ function CollectionPage() {
   );
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
+function CollectionMobileCards({ rows, isLoading, loadError, hasActiveFilters, onClearFilters, onSelect }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
   onSelect: (movie: Movie, edition?: Edition) => void;
 }) {
   if (isLoading) {
@@ -1939,7 +1967,12 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   if (!rows.length) {
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary">No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        {hasActiveFilters && (
+          <Button variant="outlined" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </Paper>
     );
   }
