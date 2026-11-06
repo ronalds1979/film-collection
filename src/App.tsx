@@ -516,10 +516,21 @@ function App() {
 function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
-  const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => baseCollator.compare(left.alternativeTitle || left.title, right.alternativeTitle || right.title)),
-    [movies],
-  );
+  const alphabetizedMovies = useMemo(() => {
+    const top4: Movie[] = [];
+    for (let i = 0; i < movies.length; i++) {
+      const movie = movies[i];
+      let insertIdx = top4.length;
+      while (insertIdx > 0 && baseCollator.compare(movie.alternativeTitle || movie.title, top4[insertIdx - 1].alternativeTitle || top4[insertIdx - 1].title) < 0) {
+        insertIdx--;
+      }
+      if (insertIdx < 4) {
+        top4.splice(insertIdx, 0, movie);
+        if (top4.length > 4) top4.pop();
+      }
+    }
+    return top4;
+  }, [movies]);
 
   useEffect(() => {
     void fetchSummary();
@@ -586,7 +597,7 @@ function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {alphabetizedMovies.slice(0, 4).map((movie) => (
+                {alphabetizedMovies.map((movie) => (
                   <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
                     <Typography variant="caption" color="text.secondary">

@@ -17,3 +17,7 @@
 ## 2026-10-26 - O(N²) to O(N) Hash Map Lookup in React useMemo
 **Learning:** Reconstructing grouped lists via nested loops inside `useMemo` (e.g., iterating over movies inside a loop over genres, O(Genres * Movies)) creates severe performance degradation for large datasets.
 **Action:** Replace nested search loops with a single pass building a `Map` (Hash Map) and grouping items. This changes the time complexity from O(N²) to O(N), measurably reducing execution time and main thread blocking.
+## 2026-11-06 - Avoid Full O(N log N) Sorts for Top-K Slices\n**Learning:** Sorting an entire large array (like ) just to  and display the top 4 items creates unnecessary overhead (O(N log N) time complexity plus array allocation). While it may seem fast for small collections, it scales poorly and wastes memory.\n**Action:** When displaying only a small subset of top items, use a single-pass O(N) linear scan that maintains a small bounded array of the top K elements instead of sorting the whole array.
+## 2026-10-26 - Avoid Full O(N log N) Sorts for Top-K Slices
+**Learning:** Sorting an entire large array (like `movies`) just to `.slice(0, 4)` and display the top 4 items creates unnecessary overhead (O(N log N) time complexity plus array allocation). While it may seem fast for small collections, it scales poorly and wastes memory.
+**Action:** When displaying only a small subset of top items, use a single-pass O(N) linear scan that maintains a small bounded array of the top K elements instead of sorting the whole array.
