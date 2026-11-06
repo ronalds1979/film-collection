@@ -291,7 +291,7 @@ app.use((error, _req, res, _next) => {
   res.status(status).json({ success: false, message: 'The request could not be processed.' });
 });
 
-app.post('/api/ingest', async (req, res) => {
+app.post('/api/ingest', async (req, res, next) => {
   try {
     const payload = req.body || {};
     const title = normalize(payload.title);
@@ -435,33 +435,33 @@ app.post('/api/ingest', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Unable to ingest movie metadata.' });
+    next(error);
   }
 });
 
-app.put('/api/movies/:id', async (req, res) => {
-  const movieId = Number(req.params.id);
-  const payload = req.body || {};
-  const editionId = Number(payload.editionId);
-  const title = normalize(payload.title);
+app.put('/api/movies/:id', async (req, res, next) => {
+  try {
+    const movieId = Number(req.params.id);
+    const payload = req.body || {};
+    const editionId = Number(payload.editionId);
+    const title = normalize(payload.title);
 
-  if (!Number.isSafeInteger(movieId) || movieId < 1 || !Number.isSafeInteger(editionId) || editionId < 1) {
-    res.status(400).json({ message: 'A valid movie and edition are required.' });
-    return;
-  }
-  if (!title) {
-    res.status(400).json({ message: 'A movie title is required.' });
-    return;
-  }
-  const genreIds = parseGenreIds(payload.genreIds);
-  if (payload.genreIds !== undefined && !genreIds) {
-    res.status(400).json({ message: 'genreIds must be an array of genre identifiers.' });
-    return;
-  }
+    if (!Number.isSafeInteger(movieId) || movieId < 1 || !Number.isSafeInteger(editionId) || editionId < 1) {
+      res.status(400).json({ message: 'A valid movie and edition are required.' });
+      return;
+    }
+    if (!title) {
+      res.status(400).json({ message: 'A movie title is required.' });
+      return;
+    }
+    const genreIds = parseGenreIds(payload.genreIds);
+    if (payload.genreIds !== undefined && !genreIds) {
+      res.status(400).json({ message: 'genreIds must be an array of genre identifiers.' });
+      return;
+    }
 
-  const integerFields = [
-    ['releaseYear', 'Release year'],
+    const integerFields = [
+      ['releaseYear', 'Release year'],
     ['editionYear', 'Edition year'],
     ['discCount', 'Disc count'],
   ];
@@ -538,15 +538,14 @@ app.put('/api/movies/:id', async (req, res) => {
     }
   }
 
-  for (const field of ['frontCoverPath', 'backCoverPath']) {
-    const value = payload[field];
-    if (value !== undefined && value !== null && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
-      res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
-      return;
+    for (const field of ['frontCoverPath', 'backCoverPath']) {
+      const value = payload[field];
+      if (value !== undefined && value !== null && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
+        res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
+        return;
+      }
     }
-  }
 
-  try {
     await seedGenres();
     if (genreIds) {
       const knownGenres = await prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } });
@@ -625,8 +624,7 @@ app.put('/api/movies/:id', async (req, res) => {
 
     res.json({ message: 'Movie and edition updated successfully.', ...result });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Unable to update movie metadata.' });
+    next(error);
   }
 });
 
@@ -728,26 +726,30 @@ const lookupMetadata = async (query) => {
   };
 };
 
-app.get('/api/search', async (req, res) => {
-  const query = String(req.query.query || '').trim();
-  if (!query) {
-    return res.status(400).json({ message: 'A movie title search query is required.' });
-  }
+app.get('/api/search', async (req, res, next) => {
+  try {
+    const query = String(req.query.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ message: 'A movie title search query is required.' });
+    }
 
-  const lookup = await lookupMetadata(query);
-  return res.status(lookup.status).json(lookup.payload);
+    const lookup = await lookupMetadata(query);
+    return res.status(lookup.status).json(lookup.payload);
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/metadata/barcode', async (req, res) => {
-  const barcode = String(req.query.barcode || '').replace(/\s/g, '');
-  if (!isValidRetailBarcode(barcode)) {
-    return res.status(400).json({
-      message: 'Enter a valid EAN/UPC barcode before searching for metadata.',
-      results: [],
-    });
-  }
-
+app.get('/api/metadata/barcode', async (req, res, next) => {
   try {
+    const barcode = String(req.query.barcode || '').replace(/\s/g, '');
+    if (!isValidRetailBarcode(barcode)) {
+      return res.status(400).json({
+        message: 'Enter a valid EAN/UPC barcode before searching for metadata.',
+        results: [],
+      });
+    }
+
     const editions = await prisma.edition.findMany({
       where: { barcode },
       include: { movie: true },
@@ -833,10 +835,13 @@ app.get('/api/metadata/barcode', async (req, res) => {
     });
   } catch (error) {
     console.error('Barcode metadata lookup failed', error instanceof Error ? error.name : 'Unknown error');
-    return res.status(502).json({
-      message: 'Barcode metadata lookup is temporarily unavailable. You can still search by movie title.',
-      results: [],
-    });
+    if (error instanceof Error && error.message.includes('returned HTTP')) {
+      return res.status(502).json({
+        message: 'Barcode metadata lookup is temporarily unavailable. You can still search by movie title.',
+        results: [],
+      });
+    }
+    next(error);
   }
 });
 
