@@ -7,20 +7,21 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import { isValidRetailBarcode, recognizeBarcode } from './ocr.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(__dirname, '../../..');
 
 process.env.DATABASE_URL ??= `file:${path.join(projectRoot, 'film_catalog.db')}`;
 
 const prisma = new PrismaClient();
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const uploadsDir = path.join(projectRoot, 'uploads');
-const distDir = path.join(projectRoot, 'dist');
+const uploadsDir = path.join(projectRoot, 'apps/web/public/uploads');
+const distDir = path.join(projectRoot, 'apps/web/dist');
 
 const genreOptions = [
   { id: 'GEN01', name: 'Action' },
