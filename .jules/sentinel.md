@@ -17,3 +17,8 @@
 **Vulnerability:** More Express 4 async route handlers lacked `try/catch` blocks (`/api/search`, and its controller `searchMetadata`).
 **Learning:** In Express 4, unhandled promise rejections inside async route handlers bypass the global error handler and crash the entire Node.js process, leading to Denial of Service (DoS). While previous fixes addressed some endpoints, others were missed.
 **Prevention:** Consistently ensure *all* async route handlers use `try/catch` and `next(error)` in Express 4 applications.
+
+## 2026-11-01 - Fix Denial of Service (DoS) via Unhandled Promise Rejections (continued)
+**Vulnerability:** Several Express 4 async route handlers in `server/controllers/movieController.js` (`getSummary`, `getMovies`, `getEditions`, `exportCatalog`) lacked `try/catch` blocks.
+**Learning:** In Express 4, unhandled promise rejections inside async route handlers bypass the global error handler and crash the entire Node.js process, leading to Denial of Service (DoS). While previous fixes addressed some endpoints, others were missed.
+**Prevention:** Consistently ensure *all* async route handlers use `try/catch` and `next(error)` in Express 4 applications.
