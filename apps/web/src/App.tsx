@@ -516,10 +516,27 @@ function App() {
 function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
-  const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => baseCollator.compare(left.alternativeTitle || left.title, right.alternativeTitle || right.title)),
-    [movies],
-  );
+  const topAlphabetizedMovies = useMemo(() => {
+    // ⚡ Bolt Optimization: Use a bounded O(N) linear scan to find the top 4
+    // instead of an O(N log N) full array sort to avoid unnecessary computation.
+    const topK: Movie[] = [];
+    for (const movie of movies) {
+      let insertIdx = topK.length;
+      for (let i = 0; i < topK.length; i++) {
+        if (baseCollator.compare(movie.alternativeTitle || movie.title, topK[i].alternativeTitle || topK[i].title) < 0) {
+          insertIdx = i;
+          break;
+        }
+      }
+      if (insertIdx < 4) {
+        topK.splice(insertIdx, 0, movie);
+        if (topK.length > 4) {
+          topK.pop();
+        }
+      }
+    }
+    return topK;
+  }, [movies]);
 
   useEffect(() => {
     void fetchSummary();
@@ -586,7 +603,7 @@ function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {alphabetizedMovies.slice(0, 4).map((movie) => (
+                {topAlphabetizedMovies.map((movie) => (
                   <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -648,6 +665,12 @@ function AddMoviePage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
+
+  // ⚡ Bolt: Extract inline sort into useMemo to prevent unnecessary array allocations and O(N log N) sorting on every render
+  const sortedSearchResults = useMemo(
+    () => [...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)),
+    [searchResults]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1298,7 +1321,7 @@ function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {[...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)).map((result, index) => (
+                {sortedSearchResults.map((result, index) => (
                   <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                       <Box>
@@ -1669,6 +1692,13 @@ function CollectionPage() {
     });
   }, [collectionView, filteredMovies]);
 
+  const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setGenreFilter('all');
+  };
+
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
       let selectedGenre = undefined;
@@ -1824,7 +1854,12 @@ function CollectionPage() {
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
               <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary">No movies match these filters.</Typography>
+                <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No movies match these filters.</Typography>
+                {hasActiveFilters && (
+                  <Button variant="outlined" size="small" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
               </Paper>
             )}
           </Stack>
@@ -1835,6 +1870,8 @@ function CollectionPage() {
             isLoading={isLoading}
             loadError={loadError}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table>
@@ -1904,7 +1941,14 @@ function CollectionPage() {
               ))}
               {!isLoading && !loadError && !displayedRows.length && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+                    {hasActiveFilters && (
+                      <Button variant="outlined" size="small" onClick={clearFilters}>
+                        Clear filters
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -1917,11 +1961,13 @@ function CollectionPage() {
   );
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
+function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
   onSelect: (movie: Movie, edition?: Edition) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -1939,7 +1985,12 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   if (!rows.length) {
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary">No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        {hasActiveFilters && (
+          <Button variant="outlined" size="small" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </Paper>
     );
   }

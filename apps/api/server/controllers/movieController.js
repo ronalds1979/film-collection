@@ -7,15 +7,19 @@ export const getHealth = (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
 };
 
-export const getSummary = async (_req, res) => {
-  const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
-    prisma.movie.count(),
-    prisma.edition.count(),
-    prisma.movie.count({ where: { favorite: true } }),
-    prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
-  ]);
+export const getSummary = async (_req, res, next) => {
+  try {
+    const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
+      prisma.movie.count(),
+      prisma.edition.count(),
+      prisma.movie.count({ where: { favorite: true } }),
+      prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
+    ]);
 
-  res.json({ totalMovies, totalEditions, favorites, unwatched });
+    res.json({ totalMovies, totalEditions, favorites, unwatched });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getGenres = async (_req, res) => {
@@ -29,35 +33,47 @@ export const getGenres = async (_req, res) => {
   }
 };
 
-export const getMovies = async (_req, res) => {
-  const movies = await prisma.movie.findMany({
-    include: { editions: true, genres: true },
-    orderBy: { title: 'asc' },
-  });
-  res.json(movies);
+export const getMovies = async (_req, res, next) => {
+  try {
+    const movies = await prisma.movie.findMany({
+      include: { editions: true, genres: true },
+      orderBy: { title: 'asc' },
+    });
+    res.json(movies);
+  } catch (error) {
+    next(error);
+  }
 };
 
-export const getEditions = async (_req, res) => {
-  const editions = await prisma.edition.findMany({
-    include: { movie: true },
-    orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
-  });
-  res.json(editions);
+export const getEditions = async (_req, res, next) => {
+  try {
+    const editions = await prisma.edition.findMany({
+      include: { movie: true },
+      orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
+    });
+    res.json(editions);
+  } catch (error) {
+    next(error);
+  }
 };
 
-export const exportCatalog = async (_req, res) => {
-  const movies = await prisma.movie.findMany({
-    include: { editions: true, genres: true },
-    orderBy: { title: 'asc' },
-  });
+export const exportCatalog = async (_req, res, next) => {
+  try {
+    const movies = await prisma.movie.findMany({
+      include: { editions: true, genres: true },
+      orderBy: { title: 'asc' },
+    });
 
-  res.setHeader('Content-Disposition', 'attachment; filename="film-collection-export.json"');
-  res.json({
-    formatVersion: 1,
-    exportedAt: new Date().toISOString(),
-    currency: 'EUR',
-    movies,
-  });
+    res.setHeader('Content-Disposition', 'attachment; filename="film-collection-export.json"');
+    res.json({
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      currency: 'EUR',
+      movies,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const ingestMovie = async (req, res) => {
@@ -249,14 +265,18 @@ export const updateMovie = async (req, res) => {
   }
 };
 
-export const searchMetadata = async (req, res) => {
-  const query = String(req.query.query || '').trim();
-  if (!query) {
-    return res.status(400).json({ message: 'A movie title search query is required.' });
-  }
+export const searchMetadata = async (req, res, next) => {
+  try {
+    const query = String(req.query.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ message: 'A movie title search query is required.' });
+    }
 
-  const lookup = await lookupMetadata(query);
-  return res.status(lookup.status).json(lookup.payload);
+    const lookup = await lookupMetadata(query);
+    return res.status(lookup.status).json(lookup.payload);
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getBarcodeMetadata = async (req, res) => {

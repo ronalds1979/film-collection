@@ -40,10 +40,27 @@ function StatCard({ title, value, subtitle, icon, to }: { title: string; value: 
 export function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
-  const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => baseCollator.compare(left.alternativeTitle || left.title, right.alternativeTitle || right.title)),
-    [movies],
-  );
+  const topAlphabetizedMovies = useMemo(() => {
+    // ⚡ Bolt Optimization: Use a bounded O(N) linear scan to find the top 4
+    // instead of an O(N log N) full array sort to avoid unnecessary computation.
+    const topK: Movie[] = [];
+    for (const movie of movies) {
+      let insertIdx = topK.length;
+      for (let i = 0; i < topK.length; i++) {
+        if (baseCollator.compare(movie.alternativeTitle || movie.title, topK[i].alternativeTitle || topK[i].title) < 0) {
+          insertIdx = i;
+          break;
+        }
+      }
+      if (insertIdx < 4) {
+        topK.splice(insertIdx, 0, movie);
+        if (topK.length > 4) {
+          topK.pop();
+        }
+      }
+    }
+    return topK;
+  }, [movies]);
 
   useEffect(() => {
     const fetchSummary = async () => {
@@ -110,7 +127,7 @@ export function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {alphabetizedMovies.slice(0, 4).map((movie) => (
+                {topAlphabetizedMovies.map((movie) => (
                   <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
                     <Typography variant="caption" color="text.secondary">

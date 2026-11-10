@@ -17,3 +17,13 @@
 ## 2026-10-26 - O(N²) to O(N) Hash Map Lookup in React useMemo
 **Learning:** Reconstructing grouped lists via nested loops inside `useMemo` (e.g., iterating over movies inside a loop over genres, O(Genres * Movies)) creates severe performance degradation for large datasets.
 **Action:** Replace nested search loops with a single pass building a `Map` (Hash Map) and grouping items. This changes the time complexity from O(N²) to O(N), measurably reducing execution time and main thread blocking.
+## 2026-11-05 - Array Allocations in Render
+**Learning:** Calling `[...array].sort()` directly inside the render body of a component creates a severe performance penalty because it allocates a new array and performs an O(N log N) sort operation on every single re-render, even if the array hasn't changed. This is especially problematic for search results arrays that can be large and trigger frequent re-renders during typing.
+**Action:** Always extract inline array allocations and sort operations () out of the component's render body and wrap them in a  hook, ensuring the expensive sort and allocation only happens when the underlying data actually changes.
+
+## 2026-10-26 - Array Allocations in Render
+**Learning:** Calling `[...array].sort()` directly inside the render body of a component creates a severe performance penalty because it allocates a new array and performs an O(N log N) sort operation on every single re-render, even if the array hasn't changed. This is especially problematic for search results arrays that can be large and trigger frequent re-renders during typing.
+**Action:** Always extract inline array allocations and sort operations (`[...array].sort()`) out of the component's render body and wrap them in a `useMemo` hook, ensuring the expensive sort and allocation only happens when the underlying data actually changes.
+## 2026-11-08 - Bounded Array Insertion for Top N Items
+**Learning:** When displaying only a small subset of top items (e.g., using `.slice(0, 4)`) from a large array, performing an entire O(N log N) array sort causes unnecessary performance overhead, especially in rendering contexts where it triggers frequently.
+**Action:** Avoid full array sorts when only a few items are needed. Instead, optimize performance by using an O(N) single-pass linear scan that maintains a small bounded array of the top K elements.
