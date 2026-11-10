@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { terminateOcrWorker } from '../server/ocr.js';
+import { terminateOcrWorker } from '../apps/api/server/ocr.js';
 
 const sampleDirectory = process.env.OCR_SAMPLE_DIR || path.join(os.homedir(), 'Pictures');
 const projectRoot = process.cwd();
@@ -31,7 +31,7 @@ test('mobile intake reads barcodes, enriches titles, and saves front/back covers
   let prisma;
 
   try {
-    const runtime = await import('../server/index.js');
+    const runtime = await import('../apps/api/server/index.js');
     const app = runtime.app;
     prisma = runtime.prisma;
     server = app.listen(0, '127.0.0.1');

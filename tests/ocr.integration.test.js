@@ -3,7 +3,7 @@ import { access } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
-import { recognizeBarcode, terminateOcrWorker } from '../server/ocr.js';
+import { recognizeBarcode, terminateOcrWorker } from '../apps/api/server/ocr.js';
 
 const sampleDirectory = process.env.OCR_SAMPLE_DIR || path.join(os.homedir(), 'Pictures');
 const barcodeSamples = [

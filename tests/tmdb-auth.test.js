@@ -31,7 +31,7 @@ globalThis.fetch = async (input, options) => {
   return originalFetch(input, options);
 };
 
-const { app } = await import('../server/index.js');
+const { app } = await import('../apps/api/server/index.js');
 
 test('TMDb supports Read Access Token and v3 API key without demo-shaped auth failures', async () => {
   const server = app.listen(0, '127.0.0.1');

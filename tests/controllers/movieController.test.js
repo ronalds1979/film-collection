@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { updateMovie } from '../../server/controllers/movieController.js';
+import { updateMovie } from '../../apps/api/server/controllers/movieController.js';
 
 test('updateMovie validation', async (t) => {
   await t.test('should return 400 if movie ID is not a number', async () => {
