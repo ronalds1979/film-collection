@@ -186,22 +186,22 @@ app.get('/api/export', async (_req, res, next) => {
   }
 });
 
-app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
-  const slot = String(req.body.slot || '');
-  if (!req.file || !['front', 'back'].includes(slot)) {
-    if (req.file) {
-      await fs.promises.unlink(req.file.path).catch((error) => {
-        console.error('Failed to remove cover with invalid slot', error instanceof Error ? error.name : 'Unknown error');
-      });
-    }
-
-    res.status(400).json({ success: false, message: 'A cover image and a front/back slot are required.' });
-    return;
-  }
-
+app.post('/api/upload-cover', upload.single('image'), async (req, res, next) => {
   const normalizedFilename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.jpg`;
   const normalizedPath = path.join(uploadsDir, normalizedFilename);
   try {
+    const slot = String(req.body.slot || '');
+    if (!req.file || !['front', 'back'].includes(slot)) {
+      if (req.file) {
+        await fs.promises.unlink(req.file.path).catch((error) => {
+          console.error('Failed to remove cover with invalid slot', error instanceof Error ? error.name : 'Unknown error');
+        });
+      }
+
+      res.status(400).json({ success: false, message: 'A cover image and a front/back slot are required.' });
+      return;
+    }
+
     const metadata = await sharp(req.file.path, { failOn: 'error' }).metadata();
     if (metadata.format === 'jpeg' && (!metadata.orientation || metadata.orientation === 1)) {
       await fs.promises.copyFile(req.file.path, normalizedPath);
@@ -224,31 +224,27 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
       },
     });
   } catch (error) {
-    await Promise.all([
-      fs.promises.unlink(req.file.path).catch((cleanupError) => {
+    if (req.file) {
+      await fs.promises.unlink(req.file.path).catch((cleanupError) => {
         console.error('Failed to remove original cover upload', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
-      }),
-      fs.promises.unlink(normalizedPath).catch((cleanupError) => {
-        if (cleanupError.code !== 'ENOENT') {
-          console.error('Failed to remove incomplete normalized cover', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
-        }
-      }),
-    ]);
-    console.error('Cover image normalization failed', error instanceof Error ? error.message : 'Unknown error');
-    res.status(415).json({
-      success: false,
-      message: `The ${slot} camera photo could not be prepared as a standard image. Choose a JPEG photo or change the camera setting to JPEG/Most Compatible and capture it again.`,
+      });
+    }
+    await fs.promises.unlink(normalizedPath).catch((cleanupError) => {
+      if (cleanupError.code !== 'ENOENT') {
+        console.error('Failed to remove incomplete normalized cover', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
+      }
     });
+    next(error);
   }
 });
 
-app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ success: false, message: 'Choose or capture an image containing a barcode.' });
-    return;
-  }
-
+app.post('/api/barcode/read', upload.single('image'), async (req, res, next) => {
   try {
+    if (!req.file) {
+      res.status(400).json({ success: false, message: 'Choose or capture an image containing a barcode.' });
+      return;
+    }
+
     const scan = await recognizeBarcode(req.file.path);
     if (!scan.barcode) {
       res.json({
@@ -268,20 +264,13 @@ app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
       validated: isValidRetailBarcode(scan.barcode),
     });
   } catch (error) {
-    const requestId = crypto.randomUUID();
-    const diagnostic = error instanceof Error
-      ? { name: error.name, code: error.code || null, message: error.message }
-      : { name: 'UnknownError', code: null, message: String(error) };
-    console.error('Barcode read failed', { requestId, ...diagnostic });
-    res.status(500).json({
-      success: false,
-      requestId,
-      message: `Barcode processing failed. Try another image or enter the barcode manually. If it repeats, report reference ${requestId}.`,
-    });
+    next(error);
   } finally {
-    await fs.promises.unlink(req.file.path).catch((error) => {
-      console.error('Failed to remove temporary barcode image', error instanceof Error ? error.name : 'Unknown error');
-    });
+    if (req.file) {
+      await fs.promises.unlink(req.file.path).catch((error) => {
+        console.error('Failed to remove temporary barcode image', error instanceof Error ? error.name : 'Unknown error');
+      });
+    }
   }
 });
 
