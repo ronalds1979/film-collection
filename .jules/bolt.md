@@ -27,3 +27,7 @@
 ## 2026-11-08 - Bounded Array Insertion for Top N Items
 **Learning:** When displaying only a small subset of top items (e.g., using `.slice(0, 4)`) from a large array, performing an entire O(N log N) array sort causes unnecessary performance overhead, especially in rendering contexts where it triggers frequently.
 **Action:** Avoid full array sorts when only a few items are needed. Instead, optimize performance by using an O(N) single-pass linear scan that maintains a small bounded array of the top K elements.
+
+## 2026-11-11 - Avoid Array Allocations for Simple String Operations
+**Learning:** For simple string parsing or checksum calculations (like validating barcodes), using chained, array-allocating methods (e.g., `.split('')`, `.map()`, `.reverse()`, `.reduce()`) adds unnecessary overhead due to array allocations and garbage collection.
+**Action:** Replace array-allocating methods with string-based `for` loops and `value.charCodeAt()` (offsetting by 48 for digits) to optimize performance and eliminate unnecessary allocations, especially in frequently called functions.

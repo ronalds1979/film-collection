@@ -2352,17 +2352,19 @@ function UploadField({ label, value, uploading, uploaded, uploadedPath, uploadSt
 
 function isValidRetailBarcode(value: string) {
   const digitsOnly = value.replace(/\s+/g, '');
-  if (!/^\d+$/.test(digitsOnly) || ![8, 12, 13, 14].includes(digitsOnly.length)) {
+  const len = digitsOnly.length;
+  if ((len !== 8 && len !== 12 && len !== 13 && len !== 14) || !/^\d+$/.test(digitsOnly)) {
     return false;
   }
 
-  const digits = digitsOnly.split('').map(Number);
-  const checkDigit = digits.pop();
-  const weightedSum = digits.reverse().reduce(
-    (sum, digit, index) => sum + digit * (index % 2 === 0 ? 3 : 1),
-    0,
-  );
+  let weightedSum = 0;
+  let multiplier = 3;
+  for (let i = len - 2; i >= 0; i--) {
+    weightedSum += (digitsOnly.charCodeAt(i) - 48) * multiplier;
+    multiplier = multiplier === 3 ? 1 : 3;
+  }
 
+  const checkDigit = digitsOnly.charCodeAt(len - 1) - 48;
   return (10 - (weightedSum % 10)) % 10 === checkDigit;
 }
 
