@@ -41,6 +41,7 @@ import {
   TableRow,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
@@ -1238,9 +1239,11 @@ function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.title ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear movie title">
+                          <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
@@ -1259,9 +1262,11 @@ function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.barcode ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear barcode">
+                          <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
@@ -1769,9 +1774,11 @@ function CollectionPage() {
                 startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
                 endAdornment: searchTerm ? (
                   <InputAdornment position="end">
-                    <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
-                      <ClearRounded fontSize="small" />
-                    </IconButton>
+                    <Tooltip title="Clear search">
+                      <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
+                        <ClearRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </InputAdornment>
                 ) : undefined,
               }}
@@ -2058,18 +2065,22 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies left`}
-            onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-          >
-            <ChevronLeftRounded />
-          </IconButton>
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies right`}
-            onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
-          >
-            <ChevronRightRounded />
-          </IconButton>
+          <Tooltip title="Scroll left">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies left`}
+              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+            >
+              <ChevronLeftRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Scroll right">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies right`}
+              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+            >
+              <ChevronRightRounded />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
       <Box

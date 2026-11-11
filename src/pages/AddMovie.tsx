@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
@@ -628,9 +628,11 @@ export function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.title ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear movie title">
+                          <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
@@ -649,9 +651,11 @@ export function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.barcode ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear barcode">
+                          <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
