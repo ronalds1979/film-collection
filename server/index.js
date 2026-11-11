@@ -7,7 +7,8 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import { isValidRetailBarcode, recognizeBarcode } from './ocr.js';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -1,0 +1,24 @@
+
+> film-collection-management-system@1.0.0 dev /app
+> concurrently "npm:server:dev" "npm:client:dev"
+
+[server:dev] npm warn Unknown env config "verify-deps-before-run". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[server:dev] npm warn Unknown env config "npm-globalconfig". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[server:dev] npm warn Unknown env config "_jsr-registry". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[client:dev] npm warn Unknown env config "verify-deps-before-run". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[client:dev] npm warn Unknown env config "npm-globalconfig". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[client:dev] npm warn Unknown env config "_jsr-registry". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+[server:dev]
+[server:dev] > film-collection-management-system@1.0.0 server:dev
+[server:dev] > node --env-file=.env --watch server/index.js
+[server:dev]
+[client:dev]
+[client:dev] > film-collection-management-system@1.0.0 client:dev
+[client:dev] > vite --host 0.0.0.0 --port 5173
+[client:dev]
+[client:dev]
+[client:dev]   VITE v5.4.21  ready in 274 ms
+[client:dev]
+[client:dev]   ➜  Local:   http://localhost:5173/
+[client:dev]   ➜  Network: http://192.168.0.2:5173/
+[server:dev] Film collection API listening on http://0.0.0.0:3000

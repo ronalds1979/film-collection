@@ -41,6 +41,7 @@ import {
   TableRow,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
@@ -2041,18 +2042,22 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies left`}
-            onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-          >
-            <ChevronLeftRounded />
-          </IconButton>
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies right`}
-            onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
-          >
-            <ChevronRightRounded />
-          </IconButton>
+          <Tooltip title={`Scroll ${genre.name} movies left`}>
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies left`}
+              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+            >
+              <ChevronLeftRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={`Scroll ${genre.name} movies right`}>
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies right`}
+              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+            >
+              <ChevronRightRounded />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
       <Box
