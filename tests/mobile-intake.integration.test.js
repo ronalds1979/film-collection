@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { terminateOcrWorker } from '../server/ocr.js';
+import { terminateOcrWorker } from '../apps/api/server/ocr.js';
 
 const sampleDirectory = process.env.OCR_SAMPLE_DIR || path.join(os.homedir(), 'Pictures');
 const projectRoot = process.cwd();
@@ -31,7 +31,7 @@ test('mobile intake reads barcodes, enriches titles, and saves front/back covers
   let prisma;
 
   try {
-    const runtime = await import('../server/index.js');
+    const runtime = await import('../apps/api/server/index.js');
     const app = runtime.app;
     prisma = runtime.prisma;
     server = app.listen(0, '127.0.0.1');
@@ -320,6 +320,22 @@ test('mobile intake reads barcodes, enriches titles, and saves front/back covers
     assert.equal(updatedPayload.edition.purchasePrice, 12.5);
     assert.equal(updatedPayload.edition.frontCoverPath, uploadedCovers.front.path, 'omitted cover paths must be preserved');
     assert.equal(updatedPayload.edition.backCoverPath, uploadedCovers.back.path, 'omitted cover paths must be preserved');
+
+    const invalidMovieIdUpdate1 = await fetch(`${baseUrl}/api/movies/invalid-id`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editionId: storedMovie.editions[0].id, title: 'Valid title' }),
+    });
+    assert.equal(invalidMovieIdUpdate1.status, 400);
+    assert.equal((await invalidMovieIdUpdate1.json()).message, 'A valid movie ID is required.');
+
+    const invalidMovieIdUpdate2 = await fetch(`${baseUrl}/api/movies/0`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editionId: storedMovie.editions[0].id, title: 'Valid title' }),
+    });
+    assert.equal(invalidMovieIdUpdate2.status, 400);
+    assert.equal((await invalidMovieIdUpdate2.json()).message, 'A valid movie ID is required.');
 
     const invalidEditionUpdate = await fetch(`${baseUrl}/api/movies/${storedMovie.id}`, {
       method: 'PUT',

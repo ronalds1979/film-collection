@@ -1,23 +1,26 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert, IconButton } from '@mui/material';
+import { useEffect, useState, useMemo, useRef , useDeferredValue } from 'react';
+import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
+import ClearRounded from '@mui/icons-material/ClearRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Movie, Genre, Edition } from '../types';
-import { API_BASE } from '../utils/helpers';
+import { API_BASE, baseCollator } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
 
 function formatLabel(formatId?: string | null) {
   return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Format n/a';
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
+function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
   onSelect: (movie: Movie, edition?: Edition) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -35,7 +38,12 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   if (!rows.length) {
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary">No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        {hasActiveFilters && (
+          <Button variant="outlined" size="small" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </Paper>
     );
   }
@@ -171,8 +179,10 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const sortedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title)
-      .localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(
+      left.alternativeTitle || left.title,
+      right.alternativeTitle || right.title
+    )),
     [movies],
   );
 
@@ -181,18 +191,22 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies left`}
-            onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-          >
-            <ChevronLeftRounded />
-          </IconButton>
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies right`}
-            onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
-          >
-            <ChevronRightRounded />
-          </IconButton>
+          <Tooltip title="Scroll left">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies left`}
+              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+            >
+              <ChevronLeftRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Scroll right">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies right`}
+              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+            >
+              <ChevronRightRounded />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
       <Box
@@ -225,6 +239,7 @@ export function CollectionPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [genreError, setGenreError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
@@ -269,47 +284,116 @@ export function CollectionPage() {
     };
   }, []);
 
-  const filteredMovies = useMemo(() => movies.filter((movie) => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const matchesSearch = !normalizedSearch || [
-        movie.title,
-        movie.originalTitle,
-        movie.alternativeTitle,
-        movie.notes,
-        ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
-      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
-      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
-      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
-      return matchesSearch && matchesStatus && matchesFavorite && matchesUnwatched && matchesGenre;
-    }), [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+  const filteredMovies = useMemo(() => {
+    // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
 
-  const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
-    const editions = movie.editions || [];
-    if (collectionView === 'editions') {
-      return editions.map((edition) => ({ movie, edition }));
+    return movies.filter((movie) => {
+      // ⚡ Bolt: Check cheap boolean/enum conditions first to short-circuit
+      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
+      if (!matchesStatus) return false;
+
+      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
+      if (!matchesFavorite) return false;
+
+      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
+      if (!matchesUnwatched) return false;
+
+      // ⚡ Bolt: Perform cheap title checks before the nested genre loop to preserve short-circuiting
+      if (normalizedSearch) {
+        const matchesSearch =
+          movie.title?.toLowerCase().includes(normalizedSearch) ||
+          movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
+          movie.alternativeTitle?.toLowerCase().includes(normalizedSearch);
+        if (!matchesSearch) return false;
+      }
+
+      let matchesGenre = genreFilter === 'all';
+      if (!matchesGenre && movie.genres) {
+        for (let i = 0; i < movie.genres.length; i++) {
+          if (movie.genres[i].id === genreFilter) {
+            matchesGenre = true;
+            break;
+          }
+        }
+      }
+      if (!matchesGenre) return false;
+
+      return true;
+    });
+  }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
+
+  const displayedRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < filteredMovies.length; i++) {
+      const movie = filteredMovies[i];
+      const editions = movie.editions || [];
+      if (collectionView === 'editions') {
+        for (let j = 0; j < editions.length; j++) {
+          rows.push({ movie, edition: editions[j] });
+        }
+      } else {
+        rows.push({ movie, edition: editions[0] });
+      }
     }
-    return [{ movie, edition: editions[0] }];
-  }).sort((left, right) => {
-    const titleOrder = (left.movie.alternativeTitle || left.movie.title)
-      .localeCompare(right.movie.alternativeTitle || right.movie.title, undefined, { sensitivity: 'base' });
-    if (titleOrder !== 0) return titleOrder;
-    return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
-      || (left.edition?.id || 0) - (right.edition?.id || 0);
-  }), [collectionView, filteredMovies]);
+    return rows.sort((left, right) => {
+      const titleOrder = baseCollator.compare(
+        left.movie.alternativeTitle || left.movie.title,
+        right.movie.alternativeTitle || right.movie.title
+      );
+      if (titleOrder !== 0) return titleOrder;
+      return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
+        || (left.edition?.id || 0) - (right.edition?.id || 0);
+    });
+  }, [collectionView, filteredMovies]);
+
+  const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setGenreFilter('all');
+  };
 
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
-      const selectedGenre = genres.find((genre) => genre.id === genreFilter);
+      let selectedGenre = undefined;
+      for (let i = 0; i < genres.length; i++) {
+        if (genres[i].id === genreFilter) {
+          selectedGenre = genres[i];
+          break;
+        }
+      }
       return selectedGenre ? [{ genre: selectedGenre, movies: filteredMovies }] : [];
     }
-    return genres
-      .map((genre) => ({
-        genre,
-        movies: filteredMovies.filter((movie) => movie.genres?.some((movieGenre) => movieGenre.id === genre.id)),
-      }))
-      .filter((shelf) => shelf.movies.length > 0);
+
+    // ⚡ Bolt: Replace O(N²) nested loops with O(N) hash map lookup
+    const shelves = [];
+    const shelfMoviesMap = new Map<string, Movie[]>();
+
+    for (let m = 0; m < filteredMovies.length; m++) {
+      const movie = filteredMovies[m];
+      if (!movie.genres) continue;
+
+      for (let mg = 0; mg < movie.genres.length; mg++) {
+        const genreId = movie.genres[mg].id;
+        let shelf = shelfMoviesMap.get(genreId);
+        if (!shelf) {
+          shelf = [];
+          shelfMoviesMap.set(genreId, shelf);
+        }
+        shelf.push(movie);
+      }
+    }
+
+    for (let g = 0; g < genres.length; g++) {
+      const genre = genres[g];
+      const shelfMovies = shelfMoviesMap.get(genre.id);
+      if (shelfMovies && shelfMovies.length > 0) {
+        shelves.push({ genre, movies: shelfMovies });
+      }
+    }
+
+    return shelves;
   }, [filteredMovies, genreFilter, genres]);
 
   return (
@@ -336,7 +420,18 @@ export function CollectionPage() {
               label="Search title, original title, or alternative title"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <Tooltip title="Clear search">
+                      <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
+                        <ClearRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ) : undefined,
+              }}
             />
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
               <InputLabel>Watched status</InputLabel>
@@ -416,7 +511,12 @@ export function CollectionPage() {
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
               <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary">No movies match these filters.</Typography>
+                <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No movies match these filters.</Typography>
+                {hasActiveFilters && (
+                  <Button variant="outlined" size="small" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
               </Paper>
             )}
           </Stack>
@@ -427,6 +527,8 @@ export function CollectionPage() {
             isLoading={isLoading}
             loadError={loadError}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table>
@@ -496,7 +598,14 @@ export function CollectionPage() {
               ))}
               {!isLoading && !loadError && !displayedRows.length && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+                    {hasActiveFilters && (
+                      <Button variant="outlined" size="small" onClick={clearFilters}>
+                        Clear filters
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>

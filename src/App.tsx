@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState , useDeferredValue } from 'react';
 import { Link as RouterLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Accordion,
@@ -41,6 +41,7 @@ import {
   TableRow,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
@@ -55,6 +56,9 @@ import MovieRounded from '@mui/icons-material/MovieRounded';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
 import SearchIcon from '@mui/icons-material/Search';
+import ClearRounded from '@mui/icons-material/ClearRounded';
+
+import { baseCollator } from './utils/helpers';
 
 const API_BASE = '/api';
 
@@ -513,10 +517,27 @@ function App() {
 function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
-  const alphabetizedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title).localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
-    [movies],
-  );
+  const topAlphabetizedMovies = useMemo(() => {
+    // ⚡ Bolt Optimization: Use a bounded O(N) linear scan to find the top 4
+    // instead of an O(N log N) full array sort to avoid unnecessary computation.
+    const topK: Movie[] = [];
+    for (const movie of movies) {
+      let insertIdx = topK.length;
+      for (let i = 0; i < topK.length; i++) {
+        if (baseCollator.compare(movie.alternativeTitle || movie.title, topK[i].alternativeTitle || topK[i].title) < 0) {
+          insertIdx = i;
+          break;
+        }
+      }
+      if (insertIdx < 4) {
+        topK.splice(insertIdx, 0, movie);
+        if (topK.length > 4) {
+          topK.pop();
+        }
+      }
+    }
+    return topK;
+  }, [movies]);
 
   useEffect(() => {
     void fetchSummary();
@@ -583,7 +604,7 @@ function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {alphabetizedMovies.slice(0, 4).map((movie) => (
+                {topAlphabetizedMovies.map((movie) => (
                   <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -645,6 +666,12 @@ function AddMoviePage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
+
+  // ⚡ Bolt: Extract inline sort into useMemo to prevent unnecessary array allocations and O(N log N) sorting on every render
+  const sortedSearchResults = useMemo(
+    () => [...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)),
+    [searchResults]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1203,7 +1230,24 @@ function AddMoviePage() {
             </Typography>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Movie title" value={form.title} onChange={(event) => updateForm('title', event.target.value)} required />
+                <TextField
+                  fullWidth
+                  label="Movie title"
+                  value={form.title}
+                  onChange={(event) => updateForm('title', event.target.value)}
+                  required
+                  InputProps={{
+                    endAdornment: form.title ? (
+                      <InputAdornment position="end">
+                        <Tooltip title="Clear movie title">
+                          <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} />
@@ -1215,6 +1259,17 @@ function AddMoviePage() {
                   value={form.barcode}
                   onChange={(event) => updateForm('barcode', event.target.value)}
                   helperText={form.barcode ? (isValidRetailBarcode(form.barcode) ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
+                  InputProps={{
+                    endAdornment: form.barcode ? (
+                      <InputAdornment position="end">
+                        <Tooltip title="Clear barcode">
+                          <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
                 />
               </Grid>
               <Grid item xs={12} md={7}>
@@ -1271,7 +1326,7 @@ function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {[...searchResults].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })).map((result, index) => (
+                {sortedSearchResults.map((result, index) => (
                   <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                       <Box>
@@ -1534,6 +1589,7 @@ function CollectionPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [genreError, setGenreError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
@@ -1578,47 +1634,116 @@ function CollectionPage() {
     };
   }, []);
 
-  const filteredMovies = useMemo(() => movies.filter((movie) => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      const matchesSearch = !normalizedSearch || [
-        movie.title,
-        movie.originalTitle,
-        movie.alternativeTitle,
-        movie.notes,
-        ...(movie.editions || []).flatMap((edition) => [edition.barcode, edition.catalogNumber, edition.distributorId]),
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
-      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
-      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
-      const matchesGenre = genreFilter === 'all' || movie.genres?.some((genre) => genre.id === genreFilter) === true;
-      return matchesSearch && matchesStatus && matchesFavorite && matchesUnwatched && matchesGenre;
-    }), [collectionView, genreFilter, movies, searchTerm, statusFilter]);
+  const filteredMovies = useMemo(() => {
+    // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
+    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
 
-  const displayedRows = useMemo(() => filteredMovies.flatMap((movie) => {
-    const editions = movie.editions || [];
-    if (collectionView === 'editions') {
-      return editions.map((edition) => ({ movie, edition }));
+    return movies.filter((movie) => {
+      // ⚡ Bolt: Check cheap boolean/enum conditions first to short-circuit
+      const matchesStatus = statusFilter === 'all' || movie.watchedStatus === statusFilter;
+      if (!matchesStatus) return false;
+
+      const matchesFavorite = collectionView !== 'favorites' || Boolean(movie.favorite);
+      if (!matchesFavorite) return false;
+
+      const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
+      if (!matchesUnwatched) return false;
+
+      // ⚡ Bolt: Perform cheap title checks before the nested genre loop to preserve short-circuiting
+      if (normalizedSearch) {
+        const matchesSearch =
+          movie.title?.toLowerCase().includes(normalizedSearch) ||
+          movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
+          movie.alternativeTitle?.toLowerCase().includes(normalizedSearch);
+        if (!matchesSearch) return false;
+      }
+
+      let matchesGenre = genreFilter === 'all';
+      if (!matchesGenre && movie.genres) {
+        for (let i = 0; i < movie.genres.length; i++) {
+          if (movie.genres[i].id === genreFilter) {
+            matchesGenre = true;
+            break;
+          }
+        }
+      }
+      if (!matchesGenre) return false;
+
+      return true;
+    });
+  }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
+
+  const displayedRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < filteredMovies.length; i++) {
+      const movie = filteredMovies[i];
+      const editions = movie.editions || [];
+      if (collectionView === 'editions') {
+        for (let j = 0; j < editions.length; j++) {
+          rows.push({ movie, edition: editions[j] });
+        }
+      } else {
+        rows.push({ movie, edition: editions[0] });
+      }
     }
-    return [{ movie, edition: editions[0] }];
-  }).sort((left, right) => {
-    const titleOrder = (left.movie.alternativeTitle || left.movie.title)
-      .localeCompare(right.movie.alternativeTitle || right.movie.title, undefined, { sensitivity: 'base' });
-    if (titleOrder !== 0) return titleOrder;
-    return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
-      || (left.edition?.id || 0) - (right.edition?.id || 0);
-  }), [collectionView, filteredMovies]);
+    return rows.sort((left, right) => {
+      const titleOrder = baseCollator.compare(
+        left.movie.alternativeTitle || left.movie.title,
+        right.movie.alternativeTitle || right.movie.title
+      );
+      if (titleOrder !== 0) return titleOrder;
+      return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
+        || (left.edition?.id || 0) - (right.edition?.id || 0);
+    });
+  }, [collectionView, filteredMovies]);
+
+  const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setGenreFilter('all');
+  };
 
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
-      const selectedGenre = genres.find((genre) => genre.id === genreFilter);
+      let selectedGenre = undefined;
+      for (let i = 0; i < genres.length; i++) {
+        if (genres[i].id === genreFilter) {
+          selectedGenre = genres[i];
+          break;
+        }
+      }
       return selectedGenre ? [{ genre: selectedGenre, movies: filteredMovies }] : [];
     }
-    return genres
-      .map((genre) => ({
-        genre,
-        movies: filteredMovies.filter((movie) => movie.genres?.some((movieGenre) => movieGenre.id === genre.id)),
-      }))
-      .filter((shelf) => shelf.movies.length > 0);
+
+    // ⚡ Bolt: Replace O(N²) nested loops with O(N) hash map lookup
+    const shelves = [];
+    const shelfMoviesMap = new Map<string, Movie[]>();
+
+    for (let m = 0; m < filteredMovies.length; m++) {
+      const movie = filteredMovies[m];
+      if (!movie.genres) continue;
+
+      for (let mg = 0; mg < movie.genres.length; mg++) {
+        const genreId = movie.genres[mg].id;
+        let shelf = shelfMoviesMap.get(genreId);
+        if (!shelf) {
+          shelf = [];
+          shelfMoviesMap.set(genreId, shelf);
+        }
+        shelf.push(movie);
+      }
+    }
+
+    for (let g = 0; g < genres.length; g++) {
+      const genre = genres[g];
+      const shelfMovies = shelfMoviesMap.get(genre.id);
+      if (shelfMovies && shelfMovies.length > 0) {
+        shelves.push({ genre, movies: shelfMovies });
+      }
+    }
+
+    return shelves;
   }, [filteredMovies, genreFilter, genres]);
 
   return (
@@ -1645,7 +1770,18 @@ function CollectionPage() {
               label="Search title, original title, or alternative title"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <Tooltip title="Clear search">
+                      <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
+                        <ClearRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ) : undefined,
+              }}
             />
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
               <InputLabel>Watched status</InputLabel>
@@ -1725,7 +1861,12 @@ function CollectionPage() {
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
               <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary">No movies match these filters.</Typography>
+                <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No movies match these filters.</Typography>
+                {hasActiveFilters && (
+                  <Button variant="outlined" size="small" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
               </Paper>
             )}
           </Stack>
@@ -1736,6 +1877,8 @@ function CollectionPage() {
             isLoading={isLoading}
             loadError={loadError}
             onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table>
@@ -1805,7 +1948,14 @@ function CollectionPage() {
               ))}
               {!isLoading && !loadError && !displayedRows.length && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">No catalog entries match these filters.</TableCell>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+                    {hasActiveFilters && (
+                      <Button variant="outlined" size="small" onClick={clearFilters}>
+                        Clear filters
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -1818,11 +1968,13 @@ function CollectionPage() {
   );
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
+function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
   onSelect: (movie: Movie, edition?: Edition) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -1840,7 +1992,12 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect }: {
   if (!rows.length) {
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary">No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        {hasActiveFilters && (
+          <Button variant="outlined" size="small" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </Paper>
     );
   }
@@ -1896,8 +2053,10 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const sortedMovies = useMemo(
-    () => [...movies].sort((left, right) => (left.alternativeTitle || left.title)
-      .localeCompare(right.alternativeTitle || right.title, undefined, { sensitivity: 'base' })),
+    () => [...movies].sort((left, right) => baseCollator.compare(
+      left.alternativeTitle || left.title,
+      right.alternativeTitle || right.title
+    )),
     [movies],
   );
 
@@ -1906,18 +2065,22 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies left`}
-            onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-          >
-            <ChevronLeftRounded />
-          </IconButton>
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies right`}
-            onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
-          >
-            <ChevronRightRounded />
-          </IconButton>
+          <Tooltip title="Scroll left">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies left`}
+              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+            >
+              <ChevronLeftRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Scroll right">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies right`}
+              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+            >
+              <ChevronRightRounded />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
       <Box
@@ -2200,17 +2363,19 @@ function UploadField({ label, value, uploading, uploaded, uploadedPath, uploadSt
 
 function isValidRetailBarcode(value: string) {
   const digitsOnly = value.replace(/\s+/g, '');
-  if (!/^\d+$/.test(digitsOnly) || ![8, 12, 13, 14].includes(digitsOnly.length)) {
+  const len = digitsOnly.length;
+  if ((len !== 8 && len !== 12 && len !== 13 && len !== 14) || !/^\d+$/.test(digitsOnly)) {
     return false;
   }
 
-  const digits = digitsOnly.split('').map(Number);
-  const checkDigit = digits.pop();
-  const weightedSum = digits.reverse().reduce(
-    (sum, digit, index) => sum + digit * (index % 2 === 0 ? 3 : 1),
-    0,
-  );
+  let weightedSum = 0;
+  let multiplier = 3;
+  for (let i = len - 2; i >= 0; i--) {
+    weightedSum += (digitsOnly.charCodeAt(i) - 48) * multiplier;
+    multiplier = multiplier === 3 ? 1 : 3;
+  }
 
+  const checkDigit = digitsOnly.charCodeAt(len - 1) - 48;
   return (10 - (weightedSum % 10)) % 10 === checkDigit;
 }
 

@@ -1,0 +1,33 @@
+## 2026-10-26 - Loop Invariants in React useMemo Filters
+**Learning:** Extracting string manipulation loop invariants (like `.trim().toLowerCase()`) out of `Array.prototype.filter` inside a `useMemo` significantly reduces unnecessary work on large lists. Additionally, checking cheap boolean conditions before creating arrays and doing string searches leverages short-circuiting to skip expensive operations.
+**Action:** Always move static calculations outside of iterator callbacks and order filter conditions from cheapest (booleans) to most expensive (string operations/array allocations) using short-circuit evaluation.
+
+## 2026-10-26 - Intl.Collator for Sorting
+**Learning:** Calling `String.prototype.localeCompare` inside `.sort()` callbacks across multiple arrays (like collection/dashboard movie lists) creates severe performance bottlenecks because it instantiates a new `Intl.Collator` for every comparison. Replacing it with a single, shared `Intl.Collator` instance reduces sorting time by up to 98% (from ~22s down to ~400ms for 500 iterations of 1000 items).
+**Action:** Always instantiate a shared `new Intl.Collator(...)` (e.g., `baseCollator` in `src/utils/helpers.ts`) and use its `.compare()` method when alphabetizing strings in render-critical paths or large data transformations, instead of using `.localeCompare` directly on strings.
+
+## 2026-10-26 - Deferred Values for Expensive List Operations
+**Learning:** Updating a search input synchronously that drives heavy filtering and sorting logic (like a large array `.flatMap` and `.sort` in `useMemo`) causes typing lag and blocks the main thread.
+**Action:** Use `useDeferredValue` on the `searchTerm` and pass this deferred value into the dependency array of the expensive `useMemo` operations. This allows the search input to remain responsive while deferring the heavy computations until the main thread has free time.
+
+## 2024-05-19 - Avoid Array Allocations in High-Frequency Loops
+**Learning:** Using array-allocating methods like `.flatMap()` or spreading into new arrays `[...]` inside the `.filter()` callback of a `useMemo` hook causes significant performance degradation due to constant garbage collection, especially on large lists.
+**Action:** Replace array creation and `.some()` checks with direct sequential logical OR (`||`) evaluations and standard `for` loops where necessary to eliminate allocation overhead and fully utilize short-circuiting.
+
+## 2026-10-26 - O(N²) to O(N) Hash Map Lookup in React useMemo
+**Learning:** Reconstructing grouped lists via nested loops inside `useMemo` (e.g., iterating over movies inside a loop over genres, O(Genres * Movies)) creates severe performance degradation for large datasets.
+**Action:** Replace nested search loops with a single pass building a `Map` (Hash Map) and grouping items. This changes the time complexity from O(N²) to O(N), measurably reducing execution time and main thread blocking.
+## 2026-11-05 - Array Allocations in Render
+**Learning:** Calling `[...array].sort()` directly inside the render body of a component creates a severe performance penalty because it allocates a new array and performs an O(N log N) sort operation on every single re-render, even if the array hasn't changed. This is especially problematic for search results arrays that can be large and trigger frequent re-renders during typing.
+**Action:** Always extract inline array allocations and sort operations () out of the component's render body and wrap them in a  hook, ensuring the expensive sort and allocation only happens when the underlying data actually changes.
+
+## 2026-10-26 - Array Allocations in Render
+**Learning:** Calling `[...array].sort()` directly inside the render body of a component creates a severe performance penalty because it allocates a new array and performs an O(N log N) sort operation on every single re-render, even if the array hasn't changed. This is especially problematic for search results arrays that can be large and trigger frequent re-renders during typing.
+**Action:** Always extract inline array allocations and sort operations (`[...array].sort()`) out of the component's render body and wrap them in a `useMemo` hook, ensuring the expensive sort and allocation only happens when the underlying data actually changes.
+## 2026-11-08 - Bounded Array Insertion for Top N Items
+**Learning:** When displaying only a small subset of top items (e.g., using `.slice(0, 4)`) from a large array, performing an entire O(N log N) array sort causes unnecessary performance overhead, especially in rendering contexts where it triggers frequently.
+**Action:** Avoid full array sorts when only a few items are needed. Instead, optimize performance by using an O(N) single-pass linear scan that maintains a small bounded array of the top K elements.
+
+## 2026-11-11 - Avoid Array Allocations for Simple String Operations
+**Learning:** For simple string parsing or checksum calculations (like validating barcodes), using chained, array-allocating methods (e.g., `.split('')`, `.map()`, `.reverse()`, `.reduce()`) adds unnecessary overhead due to array allocations and garbage collection.
+**Action:** Replace array-allocating methods with string-based `for` loops and `value.charCodeAt()` (offsetting by 48 for digits) to optimize performance and eliminate unnecessary allocations, especially in frequently called functions.

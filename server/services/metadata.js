@@ -1,3 +1,5 @@
+const metadataCache = new Map();
+
 export const toTmdbResult = (item) => ({
   id: item.id,
   title: item.title || item.name || 'Untitled',
@@ -13,6 +15,10 @@ export const toTmdbResult = (item) => ({
 });
 
 export const lookupMetadata = async (query) => {
+  if (metadataCache.has(query)) {
+    return metadataCache.get(query);
+  }
+
   const results = [];
   const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
   const tmdbApiKey = process.env.TMDB_API_KEY || '';
@@ -78,7 +84,7 @@ export const lookupMetadata = async (query) => {
 
   if (!results.length) {
     if (failedProviders.length) {
-      return {
+      const response = {
         status: 502,
         payload: {
           message: 'Metadata provider search failed. Check the configured API credentials and try again.',
@@ -86,6 +92,8 @@ export const lookupMetadata = async (query) => {
           results: [],
         },
       };
+      metadataCache.set(query, response);
+      return response;
     }
 
     if (!tmdbReadAccessToken && !tmdbApiKey && !omdbApiKey) {
@@ -98,14 +106,18 @@ export const lookupMetadata = async (query) => {
       };
     }
 
-    return { status: 200, payload: { provider: 'none', results: [] } };
+    const response = { status: 200, payload: { provider: 'none', results: [] } };
+    metadataCache.set(query, response);
+    return response;
   }
 
-  return {
+  const response = {
     status: 200,
     payload: {
       provider: results.some((item) => item.source === 'tmdb') ? 'tmdb+imdb' : 'imdb',
       results,
     },
   };
+  metadataCache.set(query, response);
+  return response;
 };
