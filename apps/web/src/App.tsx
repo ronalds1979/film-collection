@@ -41,6 +41,7 @@ import {
   TableRow,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
@@ -1238,9 +1239,11 @@ function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.title ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear movie title">
+                          <IconButton aria-label="Clear movie title" onClick={() => updateForm('title', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
@@ -1259,9 +1262,11 @@ function AddMoviePage() {
                   InputProps={{
                     endAdornment: form.barcode ? (
                       <InputAdornment position="end">
-                        <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
-                          <ClearRounded fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Clear barcode">
+                          <IconButton aria-label="Clear barcode" onClick={() => updateForm('barcode', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </InputAdornment>
                     ) : undefined,
                   }}
@@ -1769,9 +1774,11 @@ function CollectionPage() {
                 startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
                 endAdornment: searchTerm ? (
                   <InputAdornment position="end">
-                    <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
-                      <ClearRounded fontSize="small" />
-                    </IconButton>
+                    <Tooltip title="Clear search">
+                      <IconButton aria-label="Clear search" onClick={() => setSearchTerm('')} edge="end" size="small">
+                        <ClearRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </InputAdornment>
                 ) : undefined,
               }}
@@ -2058,18 +2065,22 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies left`}
-            onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-          >
-            <ChevronLeftRounded />
-          </IconButton>
-          <IconButton
-            aria-label={`Scroll ${genre.name} movies right`}
-            onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
-          >
-            <ChevronRightRounded />
-          </IconButton>
+          <Tooltip title="Scroll left">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies left`}
+              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+            >
+              <ChevronLeftRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Scroll right">
+            <IconButton
+              aria-label={`Scroll ${genre.name} movies right`}
+              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+            >
+              <ChevronRightRounded />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
       <Box
@@ -2351,18 +2362,21 @@ function UploadField({ label, value, uploading, uploaded, uploadedPath, uploadSt
 }
 
 function isValidRetailBarcode(value: string) {
+  // ⚡ Bolt: Avoid array allocations (.split, .map, .reverse, .reduce) by scanning char codes in-place
   const digitsOnly = value.replace(/\s+/g, '');
-  if (!/^\d+$/.test(digitsOnly) || ![8, 12, 13, 14].includes(digitsOnly.length)) {
+  const len = digitsOnly.length;
+  if ((len !== 8 && len !== 12 && len !== 13 && len !== 14) || !/^\d+$/.test(digitsOnly)) {
     return false;
   }
 
-  const digits = digitsOnly.split('').map(Number);
-  const checkDigit = digits.pop();
-  const weightedSum = digits.reverse().reduce(
-    (sum, digit, index) => sum + digit * (index % 2 === 0 ? 3 : 1),
-    0,
-  );
+  let weightedSum = 0;
+  let multiplier = 3;
+  for (let i = len - 2; i >= 0; i--) {
+    weightedSum += (digitsOnly.charCodeAt(i) - 48) * multiplier;
+    multiplier = multiplier === 3 ? 1 : 3;
+  }
 
+  const checkDigit = digitsOnly.charCodeAt(len - 1) - 48;
   return (10 - (weightedSum % 10)) % 10 === checkDigit;
 }
 

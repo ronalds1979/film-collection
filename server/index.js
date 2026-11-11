@@ -45,10 +45,14 @@ const genreOptions = [
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
+const ALLOWED_UPLOAD_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
+
 const storage = multer.diskStorage({
   destination: (_req, _file, callback) => callback(null, uploadsDir),
   filename: (_req, file, callback) => {
-    const extension = path.extname(file.originalname) || '.jpg';
+    // 🛡️ Sentinel: Restrict uploaded file extensions to safe image formats to prevent stored XSS (.html/.svg)
+    const rawExtension = path.extname(file.originalname).toLowerCase();
+    const extension = ALLOWED_UPLOAD_EXTENSIONS.has(rawExtension) ? rawExtension : '.jpg';
     const randomSuffix = crypto.randomBytes(6).toString('hex');
     callback(null, `${Date.now()}-${randomSuffix}${extension}`);
   },
@@ -352,6 +356,15 @@ app.post('/api/ingest', async (req, res, next) => {
       }
     }
 
+    // 🛡️ Sentinel: Validate cover paths on ingest to prevent path traversal or arbitrary URL injection
+    for (const field of ['frontCoverPath', 'backCoverPath', 'spineImagePath']) {
+      const value = payload[field];
+      if (value !== undefined && value !== null && value !== '' && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
+        res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
+        return;
+      }
+    }
+
     const { movie, edition } = await prisma.$transaction(async (transaction) => {
       const movie = await transaction.movie.create({
         data: {
@@ -636,7 +649,8 @@ const lookupMetadata = async (query) => {
         tmdbUrl.searchParams.set('api_key', tmdbApiKey);
       }
 
-      const response = await fetch(tmdbUrl, { headers });
+      // 🛡️ Sentinel: Enforce 8s timeout on external metadata requests to prevent hanging connections
+      const response = await fetch(tmdbUrl, { headers, signal: AbortSignal.timeout(8000) });
       if (!response.ok) {
         throw new Error(`TMDb returned HTTP ${response.status}.`);
       }
@@ -655,7 +669,9 @@ const lookupMetadata = async (query) => {
 
   if (omdbApiKey) {
     try {
-      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`);
+      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
       if (!response.ok) {
         throw new Error(`OMDb returned HTTP ${response.status}.`);
       }
