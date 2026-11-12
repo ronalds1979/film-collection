@@ -84,6 +84,14 @@ const normalize = (value) => (typeof value === 'string' ? value.trim() : value ?
 const optionalNumber = (value) => (
   value === undefined || value === null || value === '' ? null : Number(value)
 );
+const isSafeHttpUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 let genreSeedPromise;
 const seedGenres = () => {
   if (!genreSeedPromise) {
@@ -122,8 +130,35 @@ const toTmdbResult = (item) => ({
   source: 'tmdb',
 });
 
-app.use(cors());
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+const allowedCorsOrigins = new Set(
+  (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,http://127.0.0.1:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedCorsOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Origin not allowed by CORS policy.'));
+  },
+}));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: ["'self'", 'https:'],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(express.json({ limit: '20mb' }));
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
 app.use('/uploads', express.static(uploadsDir, { maxAge: '30d', immutable: true }));
@@ -180,12 +215,13 @@ app.get('/api/movies', async (req, res, next) => {
     const rawLimit = req.query.limit;
     const limit = rawLimit !== undefined ? Number(rawLimit) : null;
     if (limit !== null && Number.isSafeInteger(limit) && limit > 0) {
+      const safeLimit = Math.min(limit, 1000);
       // ⚡ Bolt: Lightweight bounded query for Dashboard "Movies A-Z" without joining editions/genres
       const movies = await prisma.$queryRaw`
         SELECT id, title, alternativeTitle, releaseYear, watchedStatus
         FROM Movie
         ORDER BY COALESCE(NULLIF(alternativeTitle, ''), title) COLLATE NOCASE ASC
-        LIMIT ${limit}
+        LIMIT ${safeLimit}
       `;
       res.json(movies);
       return;
@@ -438,6 +474,15 @@ app.post('/api/ingest', async (req, res, next) => {
       }
     }
 
+    // 🛡️ Sentinel: Validate external URLs to block javascript: or data: URI injection
+    for (const field of ['imdbUrl', 'tmdbUrl', 'posterPath']) {
+      const value = normalize(payload[field]);
+      if (value && !(isSafeHttpUrl(value) || (field === 'posterPath' && /^\/uploads\/[^/\\]+$/.test(value)))) {
+        res.status(400).json({ message: `${field} must be a valid HTTP/HTTPS URL.` });
+        return;
+      }
+    }
+
     const { movie, edition } = await prisma.$transaction(async (transaction) => {
       const movie = await transaction.movie.create({
         data: {
@@ -617,6 +662,14 @@ app.put('/api/movies/:id', async (req, res, next) => {
       const value = payload[field];
       if (value !== undefined && value !== null && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
         res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
+        return;
+      }
+    }
+
+    for (const field of ['imdbUrl', 'tmdbUrl', 'posterPath']) {
+      const value = normalize(payload[field]);
+      if (value && !(isSafeHttpUrl(value) || (field === 'posterPath' && /^\/uploads\/[^/\\]+$/.test(value)))) {
+        res.status(400).json({ message: `${field} must be a valid HTTP/HTTPS URL.` });
         return;
       }
     }
@@ -824,8 +877,8 @@ const lookupMetadata = async (query) => {
 app.get('/api/search', async (req, res, next) => {
   try {
     const query = String(req.query.query || '').trim();
-    if (!query) {
-      return res.status(400).json({ message: 'A movie title search query is required.' });
+    if (!query || query.length > 200) {
+      return res.status(400).json({ message: 'A movie title search query (1-200 characters) is required.' });
     }
 
     const lookup = await lookupMetadata(query);

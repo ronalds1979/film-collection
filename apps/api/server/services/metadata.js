@@ -25,8 +25,9 @@ export const toTmdbResult = (item) => ({
   source: 'tmdb',
 });
 
-export const lookupMetadata = async (query) => {
-  const cacheKey = String(query || '').trim().toLowerCase();
+export const lookupMetadata = async (rawQuery) => {
+  const query = String(rawQuery || '').trim().slice(0, 200);
+  const cacheKey = query.toLowerCase();
   if (metadataCache.has(cacheKey)) {
     const cached = metadataCache.get(cacheKey);
     // Refresh LRU order
@@ -75,7 +76,10 @@ export const lookupMetadata = async (query) => {
   const fetchOmdb = async () => {
     if (!omdbApiKey) return { results: [], failed: false };
     try {
-      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`, {
+      const omdbUrl = new URL('https://www.omdbapi.com/');
+      omdbUrl.searchParams.set('apikey', omdbApiKey);
+      omdbUrl.searchParams.set('s', query);
+      const response = await fetch(omdbUrl, {
         signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) {

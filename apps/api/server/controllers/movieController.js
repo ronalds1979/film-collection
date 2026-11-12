@@ -53,11 +53,12 @@ export const getMovies = async (req, res, next) => {
     const rawLimit = req.query?.limit;
     const limit = rawLimit !== undefined ? Number(rawLimit) : null;
     if (limit !== null && Number.isSafeInteger(limit) && limit > 0) {
+      const safeLimit = Math.min(limit, 1000);
       const movies = await prisma.$queryRaw`
         SELECT id, title, alternativeTitle, releaseYear, watchedStatus
         FROM Movie
         ORDER BY COALESCE(NULLIF(alternativeTitle, ''), title) COLLATE NOCASE ASC
-        LIMIT ${limit}
+        LIMIT ${safeLimit}
       `;
       res.json(movies);
       return;
@@ -302,8 +303,8 @@ export const updateMovie = async (req, res) => {
 export const searchMetadata = async (req, res, next) => {
   try {
     const query = String(req.query.query || '').trim();
-    if (!query) {
-      return res.status(400).json({ message: 'A movie title search query is required.' });
+    if (!query || query.length > 200) {
+      return res.status(400).json({ message: 'A movie title search query (1-200 characters) is required.' });
     }
 
     const lookup = await lookupMetadata(query);
