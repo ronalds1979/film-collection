@@ -3,20 +3,32 @@ import { ingestMovieSchema, updateMovieSchema } from '../schemas/movie.js';
 import { lookupMetadata } from '../services/metadata.js';
 import { isValidRetailBarcode } from '../ocr.js';
 
+// ⚡ Bolt: Reuse a single Intl.Collator and cache static genres in memory
+const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
+let cachedGenres = null;
+
 export const getHealth = (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
 };
 
 export const getSummary = async (_req, res, next) => {
   try {
-    const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
-      prisma.movie.count(),
-      prisma.edition.count(),
-      prisma.movie.count({ where: { favorite: true } }),
-      prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
-    ]);
+    // ⚡ Bolt: Compute all dashboard counts in a single SQLite round-trip instead of 4 separate queries
+    const [summary] = await prisma.$queryRaw`
+      SELECT
+        COUNT(*) AS totalMovies,
+        COALESCE(SUM(CASE WHEN favorite = 1 THEN 1 ELSE 0 END), 0) AS favorites,
+        COALESCE(SUM(CASE WHEN watchedStatus = 'unwatched' THEN 1 ELSE 0 END), 0) AS unwatched,
+        (SELECT COUNT(*) FROM Edition) AS totalEditions
+      FROM Movie
+    `;
 
-    res.json({ totalMovies, totalEditions, favorites, unwatched });
+    res.json({
+      totalMovies: Number(summary?.totalMovies ?? 0),
+      totalEditions: Number(summary?.totalEditions ?? 0),
+      favorites: Number(summary?.favorites ?? 0),
+      unwatched: Number(summary?.unwatched ?? 0),
+    });
   } catch (error) {
     next(error);
   }
@@ -24,17 +36,33 @@ export const getSummary = async (_req, res, next) => {
 
 export const getGenres = async (_req, res) => {
   try {
-    await seedGenres();
-    const genres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
-    res.json(genres);
+    if (!cachedGenres) {
+      await seedGenres();
+      cachedGenres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(cachedGenres);
   } catch (error) {
     console.error('Failed to load film genres.', error);
     res.status(500).json({ message: 'Unable to load film genres.' });
   }
 };
 
-export const getMovies = async (_req, res, next) => {
+export const getMovies = async (req, res, next) => {
   try {
+    const rawLimit = req.query?.limit;
+    const limit = rawLimit !== undefined ? Number(rawLimit) : null;
+    if (limit !== null && Number.isSafeInteger(limit) && limit > 0) {
+      const movies = await prisma.$queryRaw`
+        SELECT id, title, alternativeTitle, releaseYear, watchedStatus
+        FROM Movie
+        ORDER BY COALESCE(NULLIF(alternativeTitle, ''), title) COLLATE NOCASE ASC
+        LIMIT ${limit}
+      `;
+      res.json(movies);
+      return;
+    }
+
     const movies = await prisma.movie.findMany({
       include: { editions: true, genres: true },
       orderBy: { title: 'asc' },
@@ -183,20 +211,26 @@ export const updateMovie = async (req, res) => {
     }
     const payload = payloadResult.data;
 
-    await seedGenres();
-    if (payload.genreIds && payload.genreIds.length > 0) {
-      const knownGenres = await prisma.genre.findMany({ where: { id: { in: payload.genreIds } }, select: { id: true } });
-      if (knownGenres.length !== payload.genreIds.length) {
-        return res.status(400).json({ message: 'One or more selected genres are not recognized.' });
-      }
-    }
+    // ⚡ Bolt: Run validation queries concurrently and select only required columns
+    const genreIds = payload.genreIds;
+    const [, knownGenres, existingMovie, existingEdition] = await Promise.all([
+      seedGenres(),
+      genreIds && genreIds.length > 0
+        ? prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } })
+        : Promise.resolve(null),
+      prisma.movie.findUnique({ where: { id: movieId }, select: { id: true } }),
+      prisma.edition.findFirst({
+        where: { id: payload.editionId, movieId },
+        select: { id: true, frontCoverPath: true, backCoverPath: true },
+      }),
+    ]);
 
-    const existingMovie = await prisma.movie.findUnique({ where: { id: movieId } });
+    if (knownGenres && knownGenres.length !== genreIds.length) {
+      return res.status(400).json({ message: 'One or more selected genres are not recognized.' });
+    }
     if (!existingMovie) {
       return res.status(404).json({ message: 'Movie not found.' });
     }
-
-    const existingEdition = await prisma.edition.findFirst({ where: { id: payload.editionId, movieId } });
     if (!existingEdition) {
       return res.status(404).json({ message: 'The selected edition does not belong to this movie.' });
     }
@@ -317,12 +351,14 @@ export const getBarcodeMetadata = async (req, res) => {
       const liveResults = liveLookups
         .filter((lookup) => lookup.status === 200)
         .flatMap((lookup) => lookup.payload.results);
+      // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
+      const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
       const results = [
         ...catalogResults,
-        ...liveResults.filter((live) => !catalogResults.some((catalog) => (
-          (live.id && catalog.id === live.id)
-          || live.title.localeCompare(catalog.title, undefined, { sensitivity: 'base' }) === 0
-        ))),
+        ...liveResults.filter((live) => (
+          !(live.id && catalogIds.has(live.id))
+          && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
+        )),
       ];
 
       return res.json({

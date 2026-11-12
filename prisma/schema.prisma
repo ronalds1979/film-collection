@@ -35,6 +35,10 @@ model Movie {
 
   editions           Edition[]
   genres             Genre[]
+
+  @@index([title])
+  @@index([favorite])
+  @@index([watchedStatus])
 }
 
 model Genre {
@@ -75,4 +79,7 @@ model Edition {
   updatedAt        DateTime @updatedAt
 
   movie            Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@index([barcode])
 }

@@ -1,4 +1,15 @@
+const MAX_CACHE_SIZE = 200;
 const metadataCache = new Map();
+
+const setCachedMetadata = (key, value) => {
+  if (metadataCache.has(key)) {
+    metadataCache.delete(key);
+  } else if (metadataCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = metadataCache.keys().next().value;
+    if (oldestKey !== undefined) metadataCache.delete(oldestKey);
+  }
+  metadataCache.set(key, value);
+};
 
 export const toTmdbResult = (item) => ({
   id: item.id,
@@ -15,17 +26,22 @@ export const toTmdbResult = (item) => ({
 });
 
 export const lookupMetadata = async (query) => {
-  if (metadataCache.has(query)) {
-    return metadataCache.get(query);
+  const cacheKey = String(query || '').trim().toLowerCase();
+  if (metadataCache.has(cacheKey)) {
+    const cached = metadataCache.get(cacheKey);
+    // Refresh LRU order
+    metadataCache.delete(cacheKey);
+    metadataCache.set(cacheKey, cached);
+    return cached;
   }
 
-  const results = [];
   const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
   const tmdbApiKey = process.env.TMDB_API_KEY || '';
   const omdbApiKey = process.env.OMDB_API_KEY || process.env.IMDB_API_KEY || '';
-  const failedProviders = [];
 
-  if (tmdbReadAccessToken || tmdbApiKey) {
+  // ⚡ Bolt: Fetch TMDb and OMDb metadata in parallel instead of sequentially
+  const fetchTmdb = async () => {
+    if (!tmdbReadAccessToken && !tmdbApiKey) return { results: [], failed: false };
     try {
       const tmdbUrl = new URL('https://api.themoviedb.org/3/search/movie');
       tmdbUrl.searchParams.set('query', query);
@@ -37,34 +53,40 @@ export const lookupMetadata = async (query) => {
         tmdbUrl.searchParams.set('api_key', tmdbApiKey);
       }
 
-      const response = await fetch(tmdbUrl, { headers });
+      const response = await fetch(tmdbUrl, { headers, signal: AbortSignal.timeout(8000) });
       if (!response.ok) {
         throw new Error(`TMDb returned HTTP ${response.status}.`);
       }
 
       const data = await response.json();
+      const items = [];
       if (Array.isArray(data.results)) {
         for (const item of data.results) {
-          results.push(toTmdbResult(item));
+          items.push(toTmdbResult(item));
         }
       }
+      return { results: items, failed: false };
     } catch (error) {
       console.error('TMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      failedProviders.push('tmdb');
+      return { results: [], failed: true };
     }
-  }
+  };
 
-  if (omdbApiKey) {
+  const fetchOmdb = async () => {
+    if (!omdbApiKey) return { results: [], failed: false };
     try {
-      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`);
+      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
       if (!response.ok) {
         throw new Error(`OMDb returned HTTP ${response.status}.`);
       }
 
       const data = await response.json();
+      const items = [];
       if (Array.isArray(data.Search)) {
         for (const item of data.Search) {
-          results.push({
+          items.push({
             title: item.Title,
             originalTitle: item.Title,
             release_date: item.Year || null,
@@ -76,15 +98,23 @@ export const lookupMetadata = async (query) => {
           });
         }
       }
+      return { results: items, failed: false };
     } catch (error) {
       console.error('OMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      failedProviders.push('imdb');
+      return { results: [], failed: true };
     }
-  }
+  };
+
+  const [tmdbOutcome, omdbOutcome] = await Promise.all([fetchTmdb(), fetchOmdb()]);
+  const results = [...tmdbOutcome.results, ...omdbOutcome.results];
+  const failedProviders = [];
+  if (tmdbOutcome.failed) failedProviders.push('tmdb');
+  if (omdbOutcome.failed) failedProviders.push('imdb');
 
   if (!results.length) {
     if (failedProviders.length) {
-      const response = {
+      // Do not cache transient 502 provider errors
+      return {
         status: 502,
         payload: {
           message: 'Metadata provider search failed. Check the configured API credentials and try again.',
@@ -92,8 +122,6 @@ export const lookupMetadata = async (query) => {
           results: [],
         },
       };
-      metadataCache.set(query, response);
-      return response;
     }
 
     if (!tmdbReadAccessToken && !tmdbApiKey && !omdbApiKey) {
@@ -107,7 +135,7 @@ export const lookupMetadata = async (query) => {
     }
 
     const response = { status: 200, payload: { provider: 'none', results: [] } };
-    metadataCache.set(query, response);
+    setCachedMetadata(cacheKey, response);
     return response;
   }
 
@@ -118,6 +146,6 @@ export const lookupMetadata = async (query) => {
       results,
     },
   };
-  metadataCache.set(query, response);
+  setCachedMetadata(cacheKey, response);
   return response;
 };

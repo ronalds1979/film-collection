@@ -63,20 +63,27 @@ export function DashboardPage() {
   }, [movies]);
 
   useEffect(() => {
-    const fetchSummary = async () => {
-      const response = await fetch(`${API_BASE}/summary`);
-      const payload = (await response.json()) as Summary;
-      setSummary(payload);
+    let cancelled = false;
+    const loadDashboard = async () => {
+      const [summaryRes, moviesRes] = await Promise.all([
+        fetch(`${API_BASE}/summary`),
+        // ⚡ Bolt: Fetch only the top 4 alphabetized movies instead of the full catalog + editions
+        fetch(`${API_BASE}/movies?limit=4`),
+      ]);
+      const [summaryPayload, moviesPayload] = await Promise.all([
+        summaryRes.json() as Promise<Summary>,
+        moviesRes.json() as Promise<Movie[]>,
+      ]);
+      if (!cancelled) {
+        setSummary(summaryPayload);
+        setMovies(moviesPayload);
+      }
     };
 
-    const fetchMovies = async () => {
-      const response = await fetch(`${API_BASE}/movies`);
-      const payload = (await response.json()) as Movie[];
-      setMovies(payload);
+    void loadDashboard();
+    return () => {
+      cancelled = true;
     };
-
-    void fetchSummary();
-    void fetchMovies();
   }, []);
 
   return (

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
@@ -12,7 +13,10 @@ export function NameOptionField({ label, value, options, helperText, onChange }:
   helperText: string;
   onChange: (value: string) => void;
 }) {
-  const selectedOption = options.find((option) => option.id === value || option.name === value);
+  const selectedOption = useMemo(
+    () => options.find((option) => option.id === value || option.name === value),
+    [options, value],
+  );
 
   return (
     <Autocomplete<NamedOption, false, false, true>

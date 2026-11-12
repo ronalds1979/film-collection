@@ -10,8 +10,11 @@ import { Movie, Genre, Edition } from '../types';
 import { API_BASE, baseCollator } from '../utils/helpers';
 import { formatOptions, watchedOptions } from '../utils/constants';
 
+// ⚡ Bolt: Precompute O(1) lookup map instead of scanning formatOptions per rendered row
+const formatLabelMap = new Map(formatOptions.map((option) => [option.id, option.label]));
+
 function formatLabel(formatId?: string | null) {
-  return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Format n/a';
+  return (formatId && formatLabelMap.get(formatId)) || formatId || 'Format n/a';
 }
 
 function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
@@ -138,6 +141,8 @@ function MoviePosterCard({ movie, onSelect }: {
             component="img"
             image={imageUrl}
             alt={`${movie.alternativeTitle || movie.title} cover`}
+            loading="lazy"
+            decoding="async"
             onError={() => {
               if (fallbackImage && imagePath !== fallbackImage) setImagePath(fallbackImage);
               else setImagePath('');

@@ -112,11 +112,11 @@ export function AddMoviePage() {
     const loadMovieForEdit = async () => {
       setIsLoadingMovie(true);
       try {
-        const response = await fetch(`${API_BASE}/movies`);
-        const movies = await response.json() as Movie[];
+        // ⚡ Bolt: Fetch only the target movie by ID instead of downloading the entire catalog
+        const response = await fetch(`${API_BASE}/movies/${encodeURIComponent(movieId)}`);
+        if (response.status === 404) throw new Error('This movie was not found in the collection.');
         if (!response.ok) throw new Error('Could not load the collection entry for editing.');
-        const movie = movies.find((item) => item.id === Number(movieId));
-        if (!movie) throw new Error('This movie was not found in the collection.');
+        const movie = await response.json() as Movie;
         const requestedEdition = searchParams.get('editionId');
         const requestedEditionId = requestedEdition ? Number(requestedEdition) : null;
         const edition = requestedEditionId

@@ -59,16 +59,25 @@ const storage = multer.diskStorage({
   },
 });
 
+const imageFileFilter = (_req, file, callback) => {
+  if (file.mimetype.startsWith('image/')) {
+    callback(null, true);
+    return;
+  }
+  callback(new Error('Only image files are allowed for cover uploads.'));
+};
+
 const upload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
-  fileFilter: (_req, file, callback) => {
-    if (file.mimetype.startsWith('image/')) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error('Only image files are allowed for cover uploads.'));
-  },
+  fileFilter: imageFileFilter,
+});
+
+// ⚡ Bolt: Keep barcode scans in memory to avoid disk write -> read -> unlink overhead
+const barcodeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: imageFileFilter,
 });
 
 const normalize = (value) => (typeof value === 'string' ? value.trim() : value ?? '');
@@ -116,45 +125,98 @@ const toTmdbResult = (item) => ({
 app.use(cors());
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: '20mb' }));
-app.use('/uploads', express.static(uploadsDir));
+// ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
+app.use('/uploads', express.static(uploadsDir, { maxAge: '30d', immutable: true }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
 });
 
+// ⚡ Bolt: Reuse a single Intl.Collator instead of calling String.prototype.localeCompare in loops
+const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
+
 app.get('/api/summary', async (_req, res, next) => {
   try {
-    const [totalMovies, totalEditions, favorites, unwatched] = await Promise.all([
-      prisma.movie.count(),
-      prisma.edition.count(),
-      prisma.movie.count({ where: { favorite: true } }),
-      prisma.movie.count({ where: { watchedStatus: 'unwatched' } }),
-    ]);
+    // ⚡ Bolt: Compute all dashboard counts in a single SQLite round-trip instead of 4 separate queries
+    const [summary] = await prisma.$queryRaw`
+      SELECT
+        COUNT(*) AS totalMovies,
+        COALESCE(SUM(CASE WHEN favorite = 1 THEN 1 ELSE 0 END), 0) AS favorites,
+        COALESCE(SUM(CASE WHEN watchedStatus = 'unwatched' THEN 1 ELSE 0 END), 0) AS unwatched,
+        (SELECT COUNT(*) FROM Edition) AS totalEditions
+      FROM Movie
+    `;
 
-    res.json({ totalMovies, totalEditions, favorites, unwatched });
+    res.json({
+      totalMovies: Number(summary?.totalMovies ?? 0),
+      totalEditions: Number(summary?.totalEditions ?? 0),
+      favorites: Number(summary?.favorites ?? 0),
+      unwatched: Number(summary?.unwatched ?? 0),
+    });
   } catch (error) {
     next(error);
   }
 });
 
+// ⚡ Bolt: Cache static genre list in memory and allow browser caching to skip repeated SQLite reads
+let cachedGenres = null;
+
 app.get('/api/genres', async (_req, res) => {
   try {
-    await seedGenres();
-    const genres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
-    res.json(genres);
+    if (!cachedGenres) {
+      await seedGenres();
+      cachedGenres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(cachedGenres);
   } catch (error) {
     console.error('Failed to load film genres.', error);
     res.status(500).json({ message: 'Unable to load film genres.' });
   }
 });
 
-app.get('/api/movies', async (_req, res, next) => {
+app.get('/api/movies', async (req, res, next) => {
   try {
+    const rawLimit = req.query.limit;
+    const limit = rawLimit !== undefined ? Number(rawLimit) : null;
+    if (limit !== null && Number.isSafeInteger(limit) && limit > 0) {
+      // ⚡ Bolt: Lightweight bounded query for Dashboard "Movies A-Z" without joining editions/genres
+      const movies = await prisma.$queryRaw`
+        SELECT id, title, alternativeTitle, releaseYear, watchedStatus
+        FROM Movie
+        ORDER BY COALESCE(NULLIF(alternativeTitle, ''), title) COLLATE NOCASE ASC
+        LIMIT ${limit}
+      `;
+      res.json(movies);
+      return;
+    }
+
     const movies = await prisma.movie.findMany({
       include: { editions: true, genres: true },
       orderBy: { title: 'asc' },
     });
     res.json(movies);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ⚡ Bolt: Single-movie endpoint avoids loading the entire catalog on edit page open
+app.get('/api/movies/:id', async (req, res, next) => {
+  const movieId = Number(req.params.id);
+  if (!Number.isSafeInteger(movieId) || movieId < 1) {
+    return res.status(400).json({ message: 'A valid movie ID is required.' });
+  }
+
+  try {
+    const movie = await prisma.movie.findUnique({
+      where: { id: movieId },
+      include: { editions: true, genres: true },
+    });
+    if (!movie) {
+      return res.status(404).json({ message: 'This movie was not found in the collection.' });
+    }
+    res.json(movie);
   } catch (error) {
     next(error);
   }
@@ -209,7 +271,8 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
   try {
     const metadata = await sharp(req.file.path, { failOn: 'error' }).metadata();
     if (metadata.format === 'jpeg' && (!metadata.orientation || metadata.orientation === 1)) {
-      await fs.promises.copyFile(req.file.path, normalizedPath);
+      // ⚡ Bolt: Atomic O(1) rename within uploadsDir instead of copying bytes and unlinking
+      await fs.promises.rename(req.file.path, normalizedPath);
     } else {
       await sharp(req.file.path, { failOn: 'error' })
         .rotate()
@@ -217,8 +280,8 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
         .flatten({ background: '#ffffff' })
         .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
         .toFile(normalizedPath);
+      await fs.promises.unlink(req.file.path);
     }
-    await fs.promises.unlink(req.file.path);
 
     res.status(201).json({
       success: true,
@@ -247,14 +310,14 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
   }
 });
 
-app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
+app.post('/api/barcode/read', barcodeUpload.single('image'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ success: false, message: 'Choose or capture an image containing a barcode.' });
     return;
   }
 
   try {
-    const scan = await recognizeBarcode(req.file.path);
+    const scan = await recognizeBarcode(req.file.buffer);
     if (!scan.barcode) {
       res.json({
         success: true,
@@ -283,10 +346,6 @@ app.post('/api/barcode/read', upload.single('image'), async (req, res) => {
       requestId,
       message: `Barcode processing failed. Try another image or enter the barcode manually. If it repeats, report reference ${requestId}.`,
     });
-  } finally {
-    await fs.promises.unlink(req.file.path).catch((error) => {
-      console.error('Failed to remove temporary barcode image', error instanceof Error ? error.name : 'Unknown error');
-    });
   }
 });
 
@@ -311,10 +370,12 @@ app.post('/api/ingest', async (req, res, next) => {
       return;
     }
     await seedGenres();
-    const knownGenres = await prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } });
-    if (knownGenres.length !== genreIds.length) {
-      res.status(400).json({ message: 'One or more selected genres are not recognized.' });
-      return;
+    if (genreIds.length > 0) {
+      const knownGenres = await prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } });
+      if (knownGenres.length !== genreIds.length) {
+        res.status(400).json({ message: 'One or more selected genres are not recognized.' });
+        return;
+      }
     }
 
     const integerFields = [
@@ -560,21 +621,27 @@ app.put('/api/movies/:id', async (req, res, next) => {
       }
     }
 
-    await seedGenres();
-    if (genreIds) {
-      const knownGenres = await prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } });
-      if (knownGenres.length !== genreIds.length) {
-        res.status(400).json({ message: 'One or more selected genres are not recognized.' });
-        return;
-      }
-    }
+    // ⚡ Bolt: Run validation queries concurrently and select only required columns
+    const [, knownGenres, existingMovie, existingEdition] = await Promise.all([
+      seedGenres(),
+      genreIds && genreIds.length > 0
+        ? prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } })
+        : Promise.resolve(null),
+      prisma.movie.findUnique({ where: { id: movieId }, select: { id: true } }),
+      prisma.edition.findFirst({
+        where: { id: editionId, movieId },
+        select: { id: true, frontCoverPath: true, backCoverPath: true },
+      }),
+    ]);
 
-    const existingMovie = await prisma.movie.findUnique({ where: { id: movieId } });
+    if (knownGenres && knownGenres.length !== genreIds.length) {
+      res.status(400).json({ message: 'One or more selected genres are not recognized.' });
+      return;
+    }
     if (!existingMovie) {
       res.status(404).json({ message: 'Movie not found.' });
       return;
     }
-    const existingEdition = await prisma.edition.findFirst({ where: { id: editionId, movieId } });
     if (!existingEdition) {
       res.status(404).json({ message: 'The selected edition does not belong to this movie.' });
       return;
@@ -643,13 +710,13 @@ app.put('/api/movies/:id', async (req, res, next) => {
 });
 
 const lookupMetadata = async (query) => {
-  const results = [];
   const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
   const tmdbApiKey = process.env.TMDB_API_KEY || '';
   const omdbApiKey = process.env.OMDB_API_KEY || process.env.IMDB_API_KEY || '';
-  const failedProviders = [];
 
-  if (tmdbReadAccessToken || tmdbApiKey) {
+  // ⚡ Bolt: Fetch TMDb and OMDb metadata in parallel instead of sequentially
+  const fetchTmdb = async () => {
+    if (!tmdbReadAccessToken && !tmdbApiKey) return { results: [], failed: false };
     try {
       const tmdbUrl = new URL('https://api.themoviedb.org/3/search/movie');
       tmdbUrl.searchParams.set('query', query);
@@ -668,18 +735,21 @@ const lookupMetadata = async (query) => {
       }
 
       const data = await response.json();
+      const items = [];
       if (Array.isArray(data.results)) {
         for (const item of data.results) {
-          results.push(toTmdbResult(item));
+          items.push(toTmdbResult(item));
         }
       }
+      return { results: items, failed: false };
     } catch (error) {
       console.error('TMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      failedProviders.push('tmdb');
+      return { results: [], failed: true };
     }
-  }
+  };
 
-  if (omdbApiKey) {
+  const fetchOmdb = async () => {
+    if (!omdbApiKey) return { results: [], failed: false };
     try {
       const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`, {
         signal: AbortSignal.timeout(8000),
@@ -689,9 +759,10 @@ const lookupMetadata = async (query) => {
       }
 
       const data = await response.json();
+      const items = [];
       if (Array.isArray(data.Search)) {
         for (const item of data.Search) {
-          results.push({
+          items.push({
             title: item.Title,
             originalTitle: item.Title,
             release_date: item.Year || null,
@@ -703,11 +774,18 @@ const lookupMetadata = async (query) => {
           });
         }
       }
+      return { results: items, failed: false };
     } catch (error) {
       console.error('OMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      failedProviders.push('imdb');
+      return { results: [], failed: true };
     }
-  }
+  };
+
+  const [tmdbOutcome, omdbOutcome] = await Promise.all([fetchTmdb(), fetchOmdb()]);
+  const results = [...tmdbOutcome.results, ...omdbOutcome.results];
+  const failedProviders = [];
+  if (tmdbOutcome.failed) failedProviders.push('tmdb');
+  if (omdbOutcome.failed) failedProviders.push('imdb');
 
   if (!results.length) {
     if (failedProviders.length) {
@@ -795,12 +873,14 @@ app.get('/api/metadata/barcode', async (req, res, next) => {
       const liveResults = liveLookups
         .filter((lookup) => lookup.status === 200)
         .flatMap((lookup) => lookup.payload.results);
+      // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
+      const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
       const results = [
         ...catalogResults,
-        ...liveResults.filter((live) => !catalogResults.some((catalog) => (
-          (live.id && catalog.id === live.id)
-          || live.title.localeCompare(catalog.title, undefined, { sensitivity: 'base' }) === 0
-        ))),
+        ...liveResults.filter((live) => (
+          !(live.id && catalogIds.has(live.id))
+          && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
+        )),
       ];
 
       return res.json({
@@ -862,18 +942,20 @@ app.get('/api/metadata/barcode', async (req, res, next) => {
   }
 });
 
+const distIndexPath = path.join(distDir, 'index.html');
+
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {
     next();
     return;
   }
 
-  if (fs.existsSync(distDir) && fs.existsSync(path.join(distDir, 'index.html'))) {
-    res.sendFile(path.join(distDir, 'index.html'));
-    return;
-  }
-
-  res.send('Film collection backend is running. Build the frontend before serving static assets.');
+  // ⚡ Bolt: Avoid synchronous fs.existsSync blocking the event loop on every SPA route
+  res.sendFile(distIndexPath, (error) => {
+    if (error) {
+      res.send('Film collection backend is running. Build the frontend before serving static assets.');
+    }
+  });
 });
 
 async function start() {

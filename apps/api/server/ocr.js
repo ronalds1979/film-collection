@@ -58,6 +58,35 @@ const tryDecodeBitmap = (bitmap, readers) => {
   return null;
 };
 
+// ⚡ Bolt: Rotate 1-channel grayscale pixels in-memory to avoid repeated PNG encode/decode overhead
+const rotateGrayscale = (src, width, height, angle, dst) => {
+  if (angle === 180) {
+    for (let i = 0, j = src.length - 1; i < src.length; i++, j--) {
+      dst[i] = src[j];
+    }
+    return { width, height };
+  }
+
+  if (angle === 90) {
+    for (let y = 0; y < height; y++) {
+      const rowOffset = y * width;
+      const dstX = height - 1 - y;
+      for (let x = 0; x < width; x++) {
+        dst[x * height + dstX] = src[rowOffset + x];
+      }
+    }
+    return { width: height, height: width };
+  }
+
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * width;
+    for (let x = 0; x < width; x++) {
+      dst[(width - 1 - x) * height + y] = src[rowOffset + x];
+    }
+  }
+  return { width: height, height: width };
+};
+
 export const detectBarcode = async (imagePath) => {
   const readers = [
     EAN13Reader,
@@ -65,25 +94,31 @@ export const detectBarcode = async (imagePath) => {
     Code39Reader,
     ITFReader,
   ];
-  const orientedImage = await sharp(imagePath, { failOn: 'error' })
+  // ⚡ Bolt: Decode, resize, grayscale, and normalize once instead of encoding a PNG and re-decoding 4x
+  const { data, info } = await sharp(imagePath, { failOn: 'error' })
     .rotate()
     .resize({ width: 4000, height: 3200, fit: 'inside', withoutEnlargement: true })
-    .png()
-    .toBuffer();
+    .flatten({ background: '#ffffff' })
+    .grayscale()
+    .normalize()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const baseLuminance = new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength);
+  let rotatedBuffer;
 
   for (const angle of [0, 90, 180, 270]) {
-    const { data, info } = await sharp(orientedImage, { failOn: 'error' })
-      .rotate(angle)
-      .grayscale()
-      .normalize()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    let luminanceBytes = baseLuminance;
+    let width = info.width;
+    let height = info.height;
 
-    const luminanceSource = new RGBLuminanceSource(
-      new Uint8ClampedArray(data),
-      info.width,
-      info.height,
-    );
+    if (angle !== 0) {
+      rotatedBuffer ??= new Uint8ClampedArray(baseLuminance.length);
+      ({ width, height } = rotateGrayscale(baseLuminance, info.width, info.height, angle, rotatedBuffer));
+      luminanceBytes = rotatedBuffer;
+    }
+
+    const luminanceSource = new RGBLuminanceSource(luminanceBytes, width, height);
     const bitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
 
     const result = tryDecodeBitmap(bitmap, readers);
