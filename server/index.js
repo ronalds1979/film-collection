@@ -112,9 +112,36 @@ const toTmdbResult = (item) => ({
   source: 'tmdb',
 });
 
-app.use(cors());
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(express.json({ limit: '20mb' }));
+const allowedCorsOrigins = new Set(
+  (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,http://127.0.0.1:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedCorsOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Origin not allowed by CORS policy.'));
+  },
+}));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: ["'self'", 'https:'],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(express.json({ limit: '2mb' }));
 app.use('/uploads', express.static(uploadsDir));
 
 app.get('/api/health', (_req, res) => {
@@ -868,8 +895,9 @@ async function start() {
   await prisma.$connect();
   await seedGenres();
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Film collection API listening on http://0.0.0.0:${port}`);
+  const host = process.env.HOST || '127.0.0.1';
+  app.listen(port, host, () => {
+    console.log(`Film collection API listening on http://${host}:${port}`);
   });
 }
 

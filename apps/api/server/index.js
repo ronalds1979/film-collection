@@ -159,7 +159,47 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
-app.use(express.json({ limit: '20mb' }));
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+const RATE_LIMIT_MAX_TRACKED_IPS = 1000;
+
+const createRateLimiter = ({ windowMs = RATE_LIMIT_WINDOW_MS, maxRequests = RATE_LIMIT_MAX_REQUESTS } = {}) => {
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip || req.socket?.remoteAddress || 'unknown';
+    const entry = hits.get(key);
+
+    if (!entry || now >= entry.resetAt) {
+      if (hits.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
+        for (const [trackedKey, trackedEntry] of hits) {
+          if (now >= trackedEntry.resetAt) hits.delete(trackedKey);
+        }
+        if (hits.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
+          const oldestKey = hits.keys().next().value;
+          if (oldestKey !== undefined) hits.delete(oldestKey);
+        }
+      }
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      next();
+      return;
+    }
+
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.status(429).json({ success: false, message: 'Too many requests. Please try again shortly.' });
+      return;
+    }
+
+    next();
+  };
+};
+
+const heavyEndpointLimiter = createRateLimiter();
+
+app.use(express.json({ limit: '2mb' }));
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
 app.use('/uploads', express.static(uploadsDir, { maxAge: '30d', immutable: true }));
 
@@ -289,7 +329,7 @@ app.get('/api/export', async (_req, res, next) => {
   }
 });
 
-app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
+app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), async (req, res) => {
   const slot = String(req.body.slot || '');
   if (!req.file || !['front', 'back'].includes(slot)) {
     if (req.file) {
@@ -305,19 +345,14 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
   const normalizedFilename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.jpg`;
   const normalizedPath = path.join(uploadsDir, normalizedFilename);
   try {
-    const metadata = await sharp(req.file.path, { failOn: 'error' }).metadata();
-    if (metadata.format === 'jpeg' && (!metadata.orientation || metadata.orientation === 1)) {
-      // ⚡ Bolt: Atomic O(1) rename within uploadsDir instead of copying bytes and unlinking
-      await fs.promises.rename(req.file.path, normalizedPath);
-    } else {
-      await sharp(req.file.path, { failOn: 'error' })
-        .rotate()
-        .resize({ width: 4000, height: 4000, fit: 'inside', withoutEnlargement: true })
-        .flatten({ background: '#ffffff' })
-        .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
-        .toFile(normalizedPath);
-      await fs.promises.unlink(req.file.path);
-    }
+    // 🛡️ Sentinel: Always re-encode uploaded covers via Sharp to strip EXIF/GPS metadata
+    await sharp(req.file.path, { failOn: 'error' })
+      .rotate()
+      .resize({ width: 4000, height: 4000, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
+      .toFile(normalizedPath);
+    await fs.promises.unlink(req.file.path);
 
     res.status(201).json({
       success: true,
@@ -346,7 +381,7 @@ app.post('/api/upload-cover', upload.single('image'), async (req, res) => {
   }
 });
 
-app.post('/api/barcode/read', barcodeUpload.single('image'), async (req, res) => {
+app.post('/api/barcode/read', heavyEndpointLimiter, barcodeUpload.single('image'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ success: false, message: 'Choose or capture an image containing a barcode.' });
     return;
@@ -1015,8 +1050,9 @@ async function start() {
   await prisma.$connect();
   await seedGenres();
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Film collection API listening on http://0.0.0.0:${port}`);
+  const host = process.env.HOST || '127.0.0.1';
+  app.listen(port, host, () => {
+    console.log(`Film collection API listening on http://${host}:${port}`);
   });
 }
 
