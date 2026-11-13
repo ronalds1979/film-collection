@@ -14,9 +14,11 @@ const {
 let workerPromise;
 
 const getWorker = () => {
-  workerPromise ??= createWorker('eng+por+spa').then(async (worker) => {
+  // ⚡ Bolt: Load only 'eng' traineddata and restrict character whitelist to digits for barcode OCR
+  workerPromise ??= createWorker('eng').then(async (worker) => {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.AUTO,
+      tessedit_char_whitelist: '0123456789 -',
       preserve_interword_spaces: '1',
     });
     return worker;
@@ -43,10 +45,18 @@ export const preprocessBarcodeImage = async (imagePath) => {
   return image.toBuffer();
 };
 
-const tryDecodeBitmap = (bitmap, readers) => {
-  for (const Reader of readers) {
+// ⚡ Bolt: Reuse ZXing reader instances across rotations and requests
+const BARCODE_READERS = [
+  new EAN13Reader(),
+  new Code128Reader(),
+  new Code39Reader(),
+  new ITFReader(),
+];
+
+const tryDecodeBitmap = (bitmap, readers = BARCODE_READERS) => {
+  for (const reader of readers) {
     try {
-      const result = new Reader().decode(bitmap);
+      const result = reader.decode(bitmap);
       return { value: result.getText(), format: result.getBarcodeFormat().toString() };
     } catch (error) {
       if (['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
@@ -87,23 +97,7 @@ const rotateGrayscale = (src, width, height, angle, dst) => {
   return { width: height, height: width };
 };
 
-export const detectBarcode = async (imagePath) => {
-  const readers = [
-    EAN13Reader,
-    Code128Reader,
-    Code39Reader,
-    ITFReader,
-  ];
-  // ⚡ Bolt: Decode, resize, grayscale, and normalize once instead of encoding a PNG and re-decoding 4x
-  const { data, info } = await sharp(imagePath, { failOn: 'error' })
-    .rotate()
-    .resize({ width: 4000, height: 3200, fit: 'inside', withoutEnlargement: true })
-    .flatten({ background: '#ffffff' })
-    .grayscale()
-    .normalize()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
+const detectBarcodeFromBuffer = (data, info) => {
   const baseLuminance = new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength);
   let rotatedBuffer;
 
@@ -121,7 +115,7 @@ export const detectBarcode = async (imagePath) => {
     const luminanceSource = new RGBLuminanceSource(luminanceBytes, width, height);
     const bitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
 
-    const result = tryDecodeBitmap(bitmap, readers);
+    const result = tryDecodeBitmap(bitmap);
     if (result) {
       return result;
     }
@@ -130,8 +124,32 @@ export const detectBarcode = async (imagePath) => {
   return null;
 };
 
+export const detectBarcode = async (imagePath) => {
+  // ⚡ Bolt: Decode, resize, grayscale, and normalize once at 2000x1600 max instead of 4000x3200
+  const { data, info } = await sharp(imagePath, { failOn: 'error' })
+    .rotate()
+    .resize({ width: 2000, height: 1600, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .grayscale()
+    .normalize()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  return detectBarcodeFromBuffer(data, info);
+};
+
 export const recognizeBarcode = async (imagePath) => {
-  const detectedBarcode = await detectBarcode(imagePath);
+  // ⚡ Bolt: Decode image once and reuse raw grayscale buffer for OCR fallback if ZXing fails
+  const { data: rawData, info } = await sharp(imagePath, { failOn: 'error' })
+    .rotate()
+    .resize({ width: 2000, height: 1600, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .grayscale()
+    .normalize()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const detectedBarcode = detectBarcodeFromBuffer(rawData, info);
   if (detectedBarcode) {
     return {
       barcode: detectedBarcode.value,
@@ -141,7 +159,12 @@ export const recognizeBarcode = async (imagePath) => {
     };
   }
 
-  const processedImage = await preprocessBarcodeImage(imagePath);
+  const processedImage = await sharp(rawData, {
+    raw: { width: info.width, height: info.height, channels: 1 },
+  })
+    .sharpen({ sigma: 1.2 })
+    .png()
+    .toBuffer();
   const worker = await getWorker();
   const { data } = await worker.recognize(processedImage);
   const barcode = extractBarcodeCandidates(data.text || '')[0] || '';

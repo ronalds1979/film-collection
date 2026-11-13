@@ -1,5 +1,10 @@
 const MAX_CACHE_SIZE = 200;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 const metadataCache = new Map();
+
+export const clearMetadataCache = () => {
+  metadataCache.clear();
+};
 
 const setCachedMetadata = (key, value) => {
   if (metadataCache.has(key)) {
@@ -8,7 +13,7 @@ const setCachedMetadata = (key, value) => {
     const oldestKey = metadataCache.keys().next().value;
     if (oldestKey !== undefined) metadataCache.delete(oldestKey);
   }
-  metadataCache.set(key, value);
+  metadataCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 };
 
 export const toTmdbResult = (item) => ({
@@ -28,12 +33,15 @@ export const toTmdbResult = (item) => ({
 export const lookupMetadata = async (rawQuery) => {
   const query = String(rawQuery || '').trim().slice(0, 200);
   const cacheKey = query.toLowerCase();
-  if (metadataCache.has(cacheKey)) {
-    const cached = metadataCache.get(cacheKey);
-    // Refresh LRU order
+  const cachedEntry = metadataCache.get(cacheKey);
+  if (cachedEntry) {
+    if (Date.now() < cachedEntry.expiresAt) {
+      // Refresh LRU order
+      metadataCache.delete(cacheKey);
+      metadataCache.set(cacheKey, cachedEntry);
+      return cachedEntry.value;
+    }
     metadataCache.delete(cacheKey);
-    metadataCache.set(cacheKey, cached);
-    return cached;
   }
 
   const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';

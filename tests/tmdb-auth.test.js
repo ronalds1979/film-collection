@@ -32,6 +32,7 @@ globalThis.fetch = async (input, options) => {
 };
 
 const { app } = await import('../apps/api/server/index.js');
+const { clearMetadataCache } = await import('../apps/api/server/services/metadata.js');
 
 test('TMDb supports Read Access Token and v3 API key without demo-shaped auth failures', async () => {
   const server = app.listen(0, '127.0.0.1');
@@ -49,12 +50,14 @@ test('TMDb supports Read Access Token and v3 API key without demo-shaped auth fa
     assert.equal(capturedRequests[0].url.searchParams.has('api_key'), false);
 
     delete process.env.TMDB_READ_ACCESS_TOKEN;
+    clearMetadataCache();
     const apiKeyResponse = await originalFetch(`${baseUrl}/api/search?query=A.I.`);
     assert.equal(apiKeyResponse.status, 200);
     assert.equal(capturedRequests[1].url.searchParams.get('api_key'), 'integration-test-api-key');
     assert.equal(capturedRequests[1].headers.has('authorization'), false);
 
     tmdbStatus = 401;
+    clearMetadataCache();
     const rejectedResponse = await originalFetch(`${baseUrl}/api/search?query=A.I.`);
     const rejectedResult = await rejectedResponse.json();
     assert.equal(rejectedResponse.status, 502);

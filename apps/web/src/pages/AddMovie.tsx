@@ -17,6 +17,7 @@ export function AddMoviePage() {
   const isEditing = Boolean(movieId);
   const wasEditingRef = useRef(isEditing);
   const [form, setForm] = useState(emptyMovieForm);
+  const isBarcodeValid = useMemo(() => (form.barcode ? isValidRetailBarcode(form.barcode) : false), [form.barcode]);
   const [frontCover, setFrontCover] = useState<File | null>(null);
   const [backCover, setBackCover] = useState<File | null>(null);
   const [rotatingCovers, setRotatingCovers] = useState<{ front?: boolean; back?: boolean }>({});
@@ -648,7 +649,7 @@ export function AddMoviePage() {
                   label="Barcode"
                   value={form.barcode}
                   onChange={(event) => updateForm('barcode', event.target.value)}
-                  helperText={form.barcode ? (isValidRetailBarcode(form.barcode) ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
+                  helperText={form.barcode ? (isBarcodeValid ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
                   InputProps={{
                     endAdornment: form.barcode ? (
                       <InputAdornment position="end">

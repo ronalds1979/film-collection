@@ -207,13 +207,36 @@ export const persistPendingCover = async (slot: 'front' | 'back', file: File) =>
   await withPendingCoverStore('readwrite', (store) => store.put(file, slot));
 };
 
-export const readPendingCovers = async () => {
-  const [front, back] = await Promise.all([
-    withPendingCoverStore('readonly', (store) => store.get('front')),
-    withPendingCoverStore('readonly', (store) => store.get('back')),
-  ]);
-  return [front, back] as [File | undefined, File | undefined];
-};
+export const readPendingCovers = async (): Promise<[File | undefined, File | undefined]> => (
+  // ⚡ Bolt: Read both cover slots in a single IndexedDB connection and readonly transaction
+  new Promise((resolve, reject) => {
+    const openRequest = indexedDB.open(pendingCoverDatabaseName, 1);
+    openRequest.onupgradeneeded = () => {
+      openRequest.result.createObjectStore(pendingCoverStoreName);
+    };
+    openRequest.onerror = () => reject(openRequest.error || new Error('Could not open browser storage for the captured cover.'));
+    openRequest.onsuccess = () => {
+      const database = openRequest.result;
+      const transaction = database.transaction(pendingCoverStoreName, 'readonly');
+      const store = transaction.objectStore(pendingCoverStoreName);
+      const frontRequest = store.get('front');
+      const backRequest = store.get('back');
+      let front: File | undefined;
+      let back: File | undefined;
+
+      frontRequest.onsuccess = () => { front = frontRequest.result; };
+      backRequest.onsuccess = () => { back = backRequest.result; };
+      frontRequest.onerror = () => reject(frontRequest.error || new Error('Could not access the saved front camera photo.'));
+      backRequest.onerror = () => reject(backRequest.error || new Error('Could not access the saved back camera photo.'));
+      transaction.onabort = () => reject(transaction.error || new Error('Browser storage aborted while reading saved camera photos.'));
+      transaction.oncomplete = () => {
+        database.close();
+        resolve([front, back]);
+      };
+      transaction.onerror = () => database.close();
+    };
+  })
+);
 
 export const removePendingCover = async (slot: 'front' | 'back') => {
   await withPendingCoverStore('readwrite', (store) => store.delete(slot));

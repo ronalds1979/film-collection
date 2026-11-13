@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef , useDeferredValue } from 'react';
+import { memo, useCallback, useEffect, useState, useMemo, useRef, useDeferredValue } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
@@ -17,7 +17,7 @@ function formatLabel(formatId?: string | null) {
   return (formatId && formatLabelMap.get(formatId)) || formatId || 'Format n/a';
 }
 
-function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
+const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
@@ -93,9 +93,9 @@ function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActive
       ))}
     </Stack>
   );
-}
+});
 
-function MoviePosterCard({ movie, onSelect }: {
+const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
   movie: Movie;
   onSelect: (movie: Movie) => void;
 }) {
@@ -180,9 +180,9 @@ function MoviePosterCard({ movie, onSelect }: {
       </Button>
     </Card>
   );
-}
+});
 
-function MovieCarouselRow({ genre, movies, onSelect }: {
+const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelect }: {
   genre: Genre;
   movies: Movie[];
   onSelect: (movie: Movie) => void;
@@ -240,7 +240,9 @@ function MovieCarouselRow({ genre, movies, onSelect }: {
       </Box>
     </Paper>
   );
-}
+});
+
+const COLLECTION_PAGE_SIZE = 60;
 
 export function CollectionPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -253,9 +255,22 @@ export function CollectionPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
+  const [visibleCount, setVisibleCount] = useState(COLLECTION_PAGE_SIZE);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
+
+  useEffect(() => {
+    setVisibleCount(COLLECTION_PAGE_SIZE);
+  }, [deferredSearchTerm, statusFilter, genreFilter, collectionView, displayMode]);
+
+  const handleSelectRow = useCallback((movie: Movie, edition?: Edition) => {
+    navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
+  }, [navigate]);
+
+  const handleSelectMovie = useCallback((movie: Movie) => {
+    navigate(`/edit-movie/${movie.id}${movie.editions?.[0] ? `?editionId=${movie.editions[0].id}` : ''}`);
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -516,7 +531,7 @@ export function CollectionPage() {
                 key={genre.id}
                 genre={genre}
                 movies={shelfMovies}
-                onSelect={(movie) => navigate(`/edit-movie/${movie.id}${movie.editions?.[0] ? `?editionId=${movie.editions[0].id}` : ''}`)}
+                onSelect={handleSelectMovie}
               />
             ))}
             {!isLoading && !loadError && !carouselShelves.length && (
@@ -533,10 +548,10 @@ export function CollectionPage() {
         ) : (
         <>
           <CollectionMobileCards
-            rows={displayedRows}
+            rows={displayedRows.slice(0, visibleCount)}
             isLoading={isLoading}
             loadError={loadError}
-            onSelect={(movie, edition) => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
+            onSelect={handleSelectRow}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearFilters}
           />
@@ -571,7 +586,7 @@ export function CollectionPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {displayedRows.map(({ movie, edition }) => (
+              {displayedRows.slice(0, visibleCount).map(({ movie, edition }) => (
                 <TableRow
                   key={`${movie.id}-${edition?.id || 'movie'}`}
                   hover
@@ -631,6 +646,13 @@ export function CollectionPage() {
             </TableBody>
           </Table>
           </TableContainer>
+          {displayedRows.length > visibleCount && (
+            <Stack alignItems="center" sx={{ pt: 1 }}>
+              <Button variant="outlined" onClick={() => setVisibleCount((prev) => prev + COLLECTION_PAGE_SIZE)}>
+                Show more ({displayedRows.length - visibleCount} remaining)
+              </Button>
+            </Stack>
+          )}
         </>
         )}
       </Stack>

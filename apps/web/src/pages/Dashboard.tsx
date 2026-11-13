@@ -42,27 +42,8 @@ export function DashboardPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const topAlphabetizedMovies = useMemo(() => {
-    // ⚡ Bolt Optimization: Use a bounded O(N) linear scan to find the top 4
-    // instead of an O(N log N) full array sort to avoid unnecessary computation.
-    const topK: Movie[] = [];
-    for (const movie of movies) {
-      let insertIdx = topK.length;
-      for (let i = 0; i < topK.length; i++) {
-        if (baseCollator.compare(movie.alternativeTitle || movie.title, topK[i].alternativeTitle || topK[i].title) < 0) {
-          insertIdx = i;
-          break;
-        }
-      }
-      if (insertIdx < 4) {
-        topK.splice(insertIdx, 0, movie);
-        if (topK.length > 4) {
-          topK.pop();
-        }
-      }
-    }
-    return topK;
-  }, [movies]);
+  // ⚡ Bolt: /api/movies?limit=4 already returns the top 4 alphabetized movies from SQLite
+  const topAlphabetizedMovies = movies;
 
   useEffect(() => {
     let cancelled = false;

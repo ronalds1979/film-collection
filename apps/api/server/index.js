@@ -5,11 +5,13 @@ import multer from 'multer';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 import pkg from '@prisma/client';
 const { PrismaClient } = pkg;
 import { isValidRetailBarcode, recognizeBarcode } from './ocr.js';
+import { lookupMetadata } from './services/metadata.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +20,9 @@ const projectRoot = path.resolve(__dirname, '../../..');
 process.env.DATABASE_URL ??= `file:${path.join(projectRoot, 'film_catalog.db')}`;
 
 const prisma = new PrismaClient();
+// ⚡ Bolt: Enable SQLite WAL mode for concurrent reads and faster writes
+prisma.$executeRawUnsafe('PRAGMA journal_mode = WAL;').catch(() => {});
+prisma.$executeRawUnsafe('PRAGMA synchronous = NORMAL;').catch(() => {});
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const uploadsDir = path.join(projectRoot, 'apps/web/public/uploads');
@@ -46,19 +51,6 @@ const genreOptions = [
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
-const ALLOWED_UPLOAD_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, callback) => callback(null, uploadsDir),
-  filename: (_req, file, callback) => {
-    // 🛡️ Sentinel: Restrict uploaded file extensions to safe image formats to prevent stored XSS (.html/.svg)
-    const rawExtension = path.extname(file.originalname).toLowerCase();
-    const extension = ALLOWED_UPLOAD_EXTENSIONS.has(rawExtension) ? rawExtension : '.jpg';
-    const randomSuffix = crypto.randomBytes(6).toString('hex');
-    callback(null, `${Date.now()}-${randomSuffix}${extension}`);
-  },
-});
-
 const imageFileFilter = (_req, file, callback) => {
   if (file.mimetype.startsWith('image/')) {
     callback(null, true);
@@ -67,8 +59,9 @@ const imageFileFilter = (_req, file, callback) => {
   callback(new Error('Only image files are allowed for cover uploads.'));
 };
 
+// ⚡ Bolt: Keep cover uploads in memory to avoid disk write -> read -> unlink overhead
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: imageFileFilter,
 });
@@ -115,20 +108,6 @@ const parseGenreIds = (value) => {
   }
   return [...new Set(value)];
 };
-
-const toTmdbResult = (item) => ({
-  id: item.id,
-  title: item.title || item.name || 'Untitled',
-  original_title: item.original_title || item.originalTitle || null,
-  originalTitle: item.original_title || item.originalTitle || null,
-  release_date: item.release_date || item.first_air_date || null,
-  releaseDate: item.release_date || item.first_air_date || null,
-  overview: item.overview || item.synopsis || '',
-  poster_path: item.poster_path || null,
-  backdrop_path: item.backdrop_path || null,
-  imdb_id: item.imdb_id || null,
-  source: 'tmdb',
-});
 
 const allowedCorsOrigins = new Set(
   (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,http://127.0.0.1:3000')
@@ -200,6 +179,33 @@ const createRateLimiter = ({ windowMs = RATE_LIMIT_WINDOW_MS, maxRequests = RATE
 const heavyEndpointLimiter = createRateLimiter();
 
 app.use(express.json({ limit: '2mb' }));
+// ⚡ Bolt: Gzip-compress large JSON/text responses (>1 KB) using built-in zlib
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) {
+    next();
+    return;
+  }
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    const serialized = JSON.stringify(body);
+    if (serialized.length < 1024) {
+      return origJson(body);
+    }
+    zlib.gzip(serialized, (err, compressed) => {
+      if (err) {
+        origJson(body);
+        return;
+      }
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Vary', 'Accept-Encoding');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.send(compressed);
+    });
+    return res;
+  };
+  next();
+});
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
 app.use('/uploads', express.static(uploadsDir, { maxAge: '30d', immutable: true }));
 
@@ -267,9 +273,15 @@ app.get('/api/movies', async (req, res, next) => {
       return;
     }
 
+    const rawOffset = req.query.offset;
+    const offset = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+    const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
+
     const movies = await prisma.movie.findMany({
       include: { editions: true, genres: true },
       orderBy: { title: 'asc' },
+      ...(take !== undefined ? { take } : {}),
+      ...(offset !== undefined ? { skip: offset } : {}),
     });
     res.json(movies);
   } catch (error) {
@@ -298,11 +310,19 @@ app.get('/api/movies/:id', async (req, res, next) => {
   }
 });
 
-app.get('/api/editions', async (_req, res, next) => {
+app.get('/api/editions', async (req, res, next) => {
   try {
+    const rawLimit = req.query.limit;
+    const rawOffset = req.query.offset;
+    const limit = rawLimit !== undefined ? Number(rawLimit) : null;
+    const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
+    const skip = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+
     const editions = await prisma.edition.findMany({
       include: { movie: true },
       orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
+      ...(take !== undefined ? { take } : {}),
+      ...(skip !== undefined ? { skip } : {}),
     });
     res.json(editions);
   } catch (error) {
@@ -332,12 +352,6 @@ app.get('/api/export', async (_req, res, next) => {
 app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), async (req, res) => {
   const slot = String(req.body.slot || '');
   if (!req.file || !['front', 'back'].includes(slot)) {
-    if (req.file) {
-      await fs.promises.unlink(req.file.path).catch((error) => {
-        console.error('Failed to remove cover with invalid slot', error instanceof Error ? error.name : 'Unknown error');
-      });
-    }
-
     res.status(400).json({ success: false, message: 'A cover image and a front/back slot are required.' });
     return;
   }
@@ -346,13 +360,13 @@ app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), asyn
   const normalizedPath = path.join(uploadsDir, normalizedFilename);
   try {
     // 🛡️ Sentinel: Always re-encode uploaded covers via Sharp to strip EXIF/GPS metadata
-    await sharp(req.file.path, { failOn: 'error' })
+    // ⚡ Bolt: Read directly from memory buffer and cap dimensions/quality for fast decode and smaller payloads
+    await sharp(req.file.buffer, { failOn: 'error' })
       .rotate()
-      .resize({ width: 4000, height: 4000, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
       .flatten({ background: '#ffffff' })
-      .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
+      .jpeg({ quality: 88, mozjpeg: true })
       .toFile(normalizedPath);
-    await fs.promises.unlink(req.file.path);
 
     res.status(201).json({
       success: true,
@@ -363,16 +377,11 @@ app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), asyn
       },
     });
   } catch (error) {
-    await Promise.all([
-      fs.promises.unlink(req.file.path).catch((cleanupError) => {
-        console.error('Failed to remove original cover upload', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
-      }),
-      fs.promises.unlink(normalizedPath).catch((cleanupError) => {
-        if (cleanupError.code !== 'ENOENT') {
-          console.error('Failed to remove incomplete normalized cover', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
-        }
-      }),
-    ]);
+    await fs.promises.unlink(normalizedPath).catch((cleanupError) => {
+      if (cleanupError.code !== 'ENOENT') {
+        console.error('Failed to remove incomplete normalized cover', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');
+      }
+    });
     console.error('Cover image normalization failed', error instanceof Error ? error.message : 'Unknown error');
     res.status(415).json({
       success: false,
@@ -797,118 +806,6 @@ app.put('/api/movies/:id', async (req, res, next) => {
   }
 });
 
-const lookupMetadata = async (query) => {
-  const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
-  const tmdbApiKey = process.env.TMDB_API_KEY || '';
-  const omdbApiKey = process.env.OMDB_API_KEY || process.env.IMDB_API_KEY || '';
-
-  // ⚡ Bolt: Fetch TMDb and OMDb metadata in parallel instead of sequentially
-  const fetchTmdb = async () => {
-    if (!tmdbReadAccessToken && !tmdbApiKey) return { results: [], failed: false };
-    try {
-      const tmdbUrl = new URL('https://api.themoviedb.org/3/search/movie');
-      tmdbUrl.searchParams.set('query', query);
-
-      const headers = { accept: 'application/json' };
-      if (tmdbReadAccessToken) {
-        headers.authorization = `Bearer ${tmdbReadAccessToken}`;
-      } else {
-        tmdbUrl.searchParams.set('api_key', tmdbApiKey);
-      }
-
-      // 🛡️ Sentinel: Enforce 8s timeout on external metadata requests to prevent hanging connections
-      const response = await fetch(tmdbUrl, { headers, signal: AbortSignal.timeout(8000) });
-      if (!response.ok) {
-        throw new Error(`TMDb returned HTTP ${response.status}.`);
-      }
-
-      const data = await response.json();
-      const items = [];
-      if (Array.isArray(data.results)) {
-        for (const item of data.results) {
-          items.push(toTmdbResult(item));
-        }
-      }
-      return { results: items, failed: false };
-    } catch (error) {
-      console.error('TMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      return { results: [], failed: true };
-    }
-  };
-
-  const fetchOmdb = async () => {
-    if (!omdbApiKey) return { results: [], failed: false };
-    try {
-      const response = await fetch(`https://www.omdbapi.com/?apikey=${omdbApiKey}&s=${encodeURIComponent(query)}`, {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) {
-        throw new Error(`OMDb returned HTTP ${response.status}.`);
-      }
-
-      const data = await response.json();
-      const items = [];
-      if (Array.isArray(data.Search)) {
-        for (const item of data.Search) {
-          items.push({
-            title: item.Title,
-            originalTitle: item.Title,
-            release_date: item.Year || null,
-            releaseDate: item.Year || null,
-            overview: item.Plot || item.Type || '',
-            poster_path: item.Poster || null,
-            imdb_id: item.imdbID || null,
-            source: 'imdb',
-          });
-        }
-      }
-      return { results: items, failed: false };
-    } catch (error) {
-      console.error('OMDb search failed', error instanceof Error ? error.name : 'Unknown error');
-      return { results: [], failed: true };
-    }
-  };
-
-  const [tmdbOutcome, omdbOutcome] = await Promise.all([fetchTmdb(), fetchOmdb()]);
-  const results = [...tmdbOutcome.results, ...omdbOutcome.results];
-  const failedProviders = [];
-  if (tmdbOutcome.failed) failedProviders.push('tmdb');
-  if (omdbOutcome.failed) failedProviders.push('imdb');
-
-  if (!results.length) {
-    if (failedProviders.length) {
-      return {
-        status: 502,
-        payload: {
-          message: 'Metadata provider search failed. Check the configured API credentials and try again.',
-          providers: failedProviders,
-          results: [],
-        },
-      };
-    }
-
-    if (!tmdbReadAccessToken && !tmdbApiKey && !omdbApiKey) {
-      return {
-        status: 503,
-        payload: {
-          message: 'No metadata provider is configured. Set TMDB_READ_ACCESS_TOKEN or TMDB_API_KEY in .env.',
-          results: [],
-        },
-      };
-    }
-
-    return { status: 200, payload: { provider: 'none', results: [] } };
-  }
-
-  return {
-    status: 200,
-    payload: {
-      provider: results.some((item) => item.source === 'tmdb') ? 'tmdb+imdb' : 'imdb',
-      results,
-    },
-  };
-};
-
 app.get('/api/search', async (req, res, next) => {
   try {
     const query = String(req.query.query || '').trim();
@@ -961,13 +858,14 @@ app.get('/api/metadata/barcode', async (req, res, next) => {
       const liveResults = liveLookups
         .filter((lookup) => lookup.status === 200)
         .flatMap((lookup) => lookup.payload.results);
-      // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
+      // ⚡ Bolt: O(1) Set lookup for both TMDb IDs and normalized titles
       const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
+      const catalogTitles = new Set(catalogResults.map((catalog) => (catalog.title || '').trim().toLowerCase()));
       const results = [
         ...catalogResults,
         ...liveResults.filter((live) => (
           !(live.id && catalogIds.has(live.id))
-          && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
+          && !catalogTitles.has((live.title || '').trim().toLowerCase())
         )),
       ];
 
