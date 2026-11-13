@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItem, ListItemText, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItemButton, ListItemText, MenuItem, Paper, Select, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import LibraryAddRoundedIcon from '@mui/icons-material/LibraryAddRounded';
@@ -40,6 +40,8 @@ function StatCard({ title, value, subtitle, icon, to }: { title: string; value: 
 export function DashboardPage() {
   const [summary, setSummary] = useState<Summary>({ totalMovies: 0, totalEditions: 0, favorites: 0, unwatched: 0 });
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const topAlphabetizedMovies = useMemo(() => {
     // ⚡ Bolt Optimization: Use a bounded O(N) linear scan to find the top 4
     // instead of an O(N log N) full array sort to avoid unnecessary computation.
@@ -65,18 +67,33 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     const loadDashboard = async () => {
-      const [summaryRes, moviesRes] = await Promise.all([
-        fetch(`${API_BASE}/summary`),
-        // ⚡ Bolt: Fetch only the top 4 alphabetized movies instead of the full catalog + editions
-        fetch(`${API_BASE}/movies?limit=4`),
-      ]);
-      const [summaryPayload, moviesPayload] = await Promise.all([
-        summaryRes.json() as Promise<Summary>,
-        moviesRes.json() as Promise<Movie[]>,
-      ]);
-      if (!cancelled) {
-        setSummary(summaryPayload);
-        setMovies(moviesPayload);
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const [summaryRes, moviesRes] = await Promise.all([
+          fetch(`${API_BASE}/summary`),
+          // ⚡ Bolt: Fetch only the top 4 alphabetized movies instead of the full catalog + editions
+          fetch(`${API_BASE}/movies?limit=4`),
+        ]);
+        if (!summaryRes.ok || !moviesRes.ok) {
+          throw new Error('Could not load dashboard overview.');
+        }
+        const [summaryPayload, moviesPayload] = await Promise.all([
+          summaryRes.json() as Promise<Summary>,
+          moviesRes.json() as Promise<Movie[]>,
+        ]);
+        if (!cancelled) {
+          setSummary(summaryPayload);
+          setMovies(moviesPayload);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Could not load dashboard overview.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -98,6 +115,8 @@ export function DashboardPage() {
           </Typography>
         </Box>
 
+        {loadError && <Alert severity="error">{loadError}</Alert>}
+
         <Grid container spacing={2}>
           <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" />
           <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<LibraryAddRoundedIcon />} to="/collection?view=editions" />
@@ -108,21 +127,31 @@ export function DashboardPage() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={8}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-                Intake workflow
-              </Typography>
-              <List>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Intake workflow
+                </Typography>
+                <Button component={RouterLink} to="/add-movie" variant="outlined" size="small">
+                  Start intake
+                </Button>
+              </Stack>
+              <List disablePadding>
                 {[
-                  'Scan or enter the barcode',
-                  'Search by title and enrich metadata',
-                  'Review and confirm the movie match',
-                  'Add front and back cover photos',
-                  'Enter physical-edition details',
-                  'Save the completed edition',
+                  { title: 'Scan or enter the barcode', detail: 'Quick-match physical packaging' },
+                  { title: 'Search by title and enrich metadata', detail: 'Pull synopsis, year, and IDs' },
+                  { title: 'Review and confirm the movie match', detail: 'Verify title and original title' },
+                  { title: 'Add front and back cover photos', detail: 'Capture or upload edition artwork' },
+                  { title: 'Enter physical-edition details', detail: 'Format, region, condition, and shelf' },
+                  { title: 'Save the completed edition', detail: 'Add it to your catalog' },
                 ].map((step, index) => (
-                  <ListItem key={step} sx={{ borderBottom: index === 5 ? undefined : '1px solid rgba(255,255,255,0.08)' }}>
-                    <ListItemText primary={`${index + 1}. ${step}`} secondary="Workflow stage" />
-                  </ListItem>
+                  <ListItemButton
+                    key={step.title}
+                    component={RouterLink}
+                    to="/add-movie"
+                    sx={{ borderRadius: 1.5, borderBottom: index === 5 ? undefined : '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <ListItemText primary={`${index + 1}. ${step.title}`} secondary={step.detail} />
+                  </ListItemButton>
                 ))}
               </List>
             </Paper>
@@ -134,14 +163,24 @@ export function DashboardPage() {
                 Movies A-Z
               </Typography>
               <Stack spacing={2}>
-                {topAlphabetizedMovies.map((movie) => (
-                  <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
-                    <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
-                    </Typography>
-                  </Box>
-                ))}
+                {isLoading ? (
+                  [0, 1, 2, 3].map((idx) => (
+                    <Skeleton key={idx} variant="rounded" height={64} sx={{ bgcolor: 'rgba(255,255,255,0.06)' }} />
+                  ))
+                ) : topAlphabetizedMovies.length ? (
+                  topAlphabetizedMovies.map((movie) => (
+                    <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
+                      <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
+                      </Typography>
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No movies in your collection yet.
+                  </Typography>
+                )}
               </Stack>
             </Paper>
           </Grid>

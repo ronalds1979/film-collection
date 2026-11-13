@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
@@ -55,6 +55,7 @@ export function AddMoviePage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   // ⚡ Bolt: Extract inline sort into useMemo to prevent unnecessary array allocations and O(N log N) sorting on every render
   const sortedSearchResults = useMemo(
@@ -963,10 +964,36 @@ export function AddMoviePage() {
             </Button>
             {isEditing
               ? <Button variant="outlined" size="large" onClick={() => navigate('/collection')}>Cancel</Button>
-              : <Button variant="outlined" size="large" onClick={resetIntake}>Reset form</Button>}
+              : <Button variant="outlined" size="large" onClick={() => setConfirmResetOpen(true)}>Reset form</Button>}
           </Stack>
         </Box>
       </Paper>
+
+      <Dialog
+        open={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        aria-labelledby="confirm-reset-title"
+      >
+        <DialogTitle id="confirm-reset-title">Reset movie intake form?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will clear all entered fields, metadata search results, and attached cover previews.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmResetOpen(false)}>Keep editing</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              resetIntake();
+              setConfirmResetOpen(false);
+            }}
+          >
+            Reset form
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

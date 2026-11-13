@@ -122,6 +122,10 @@ function MoviePosterCard({ movie, onSelect }: {
         background: '#101b2d',
         transition: 'transform 180ms ease, box-shadow 180ms ease',
         '&:hover': { transform: 'scale(1.04)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)' },
+        '@media (prefers-reduced-motion: reduce)': {
+          transition: 'none',
+          '&:hover': { transform: 'none' },
+        },
       }}
     >
       <Button
@@ -134,6 +138,7 @@ function MoviePosterCard({ movie, onSelect }: {
           textAlign: 'left',
           color: 'inherit',
           '&:hover': { background: 'transparent' },
+          '&:focus-visible': { outline: '2px solid #8ab4ff', outlineOffset: -2 },
         }}
       >
         {imageUrl ? (
@@ -536,7 +541,7 @@ export function CollectionPage() {
             onClearFilters={clearFilters}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-          <Table>
+          <Table aria-label="Collection movies table">
             <TableHead>
               <TableRow>
                 <TableCell>Movie</TableCell>
@@ -570,8 +575,18 @@ export function CollectionPage() {
                 <TableRow
                   key={`${movie.id}-${edition?.id || 'movie'}`}
                   hover
+                  tabIndex={0}
                   onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
-                  sx={{ cursor: 'pointer' }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
+                    }
+                  }}
+                  sx={{
+                    cursor: 'pointer',
+                    '&:focus-visible': { outline: '2px solid #8ab4ff', outlineOffset: -2 },
+                  }}
                 >
                   <TableCell>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>

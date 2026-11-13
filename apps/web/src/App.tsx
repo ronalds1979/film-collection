@@ -28,6 +28,12 @@ function PageFallback() {
   );
 }
 
+const navItems = [
+  { label: 'Home', to: '/', icon: <HomeRounded /> },
+  { label: 'Add movie', to: '/add-movie', icon: <AddCircleOutlineRounded /> },
+  { label: 'Collection', to: '/collection', icon: <MovieRounded /> },
+];
+
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -39,27 +45,67 @@ function App() {
 
   return (
     <Box sx={{ minHeight: '100vh', pb: { xs: 'calc(68px + env(safe-area-inset-bottom))', md: 0 }, background: 'linear-gradient(180deg, #0c1628 0%, #0d1b2d 100%)', color: '#edf4ff' }}>
+      <Box
+        component="a"
+        href="#main-content"
+        sx={{
+          position: 'fixed',
+          top: -100,
+          left: 16,
+          zIndex: (theme) => theme.zIndex.tooltip + 1,
+          px: 2,
+          py: 1,
+          borderRadius: 2,
+          bgcolor: '#8ab4ff',
+          color: '#0c1628',
+          fontWeight: 700,
+          '&:focus': { top: 12, outline: '2px solid #edf4ff', outlineOffset: 2 },
+        }}
+      >
+        Skip to main content
+      </Box>
       <AppBar position="sticky" sx={{ top: 0, backdropFilter: 'blur(8px)', background: 'rgba(12,22,40,0.92)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 2, sm: 3 } }}>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
             Film Collection
           </Typography>
-          <Stack direction="row" spacing={0.5} sx={{ display: { xs: 'none', md: 'flex' } }}>
-            <Button color="inherit" component={RouterLink} to="/" startIcon={<HomeRounded />}>Home</Button>
-            <Button color="inherit" component={RouterLink} to="/add-movie" startIcon={<AddCircleOutlineRounded />}>Add movie</Button>
-            <Button color="inherit" component={RouterLink} to="/collection" startIcon={<MovieRounded />}>Collection</Button>
+          <Stack component="nav" aria-label="Primary navigation" direction="row" spacing={0.5} sx={{ display: { xs: 'none', md: 'flex' } }}>
+            {navItems.map((item) => {
+              const isActive = mobileNavValue === item.to;
+              return (
+                <Button
+                  key={item.to}
+                  color="inherit"
+                  component={RouterLink}
+                  to={item.to}
+                  startIcon={item.icon}
+                  aria-current={isActive ? 'page' : undefined}
+                  sx={{
+                    px: 1.75,
+                    borderRadius: 2,
+                    color: isActive ? '#8ab4ff' : 'inherit',
+                    backgroundColor: isActive ? 'rgba(138,180,255,0.14)' : 'transparent',
+                    '&:hover': { backgroundColor: isActive ? 'rgba(138,180,255,0.2)' : 'rgba(255,255,255,0.08)' },
+                  }}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
           </Stack>
         </Toolbar>
       </AppBar>
 
-      <Suspense fallback={<PageFallback />}>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/add-movie" element={<AddMoviePage />} />
-          <Route path="/edit-movie/:movieId" element={<AddMoviePage />} />
-          <Route path="/collection" element={<CollectionPage />} />
-        </Routes>
-      </Suspense>
+      <Box component="main" id="main-content" tabIndex={-1} sx={{ outline: 'none' }}>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/add-movie" element={<AddMoviePage />} />
+            <Route path="/edit-movie/:movieId" element={<AddMoviePage />} />
+            <Route path="/collection" element={<CollectionPage />} />
+          </Routes>
+        </Suspense>
+      </Box>
 
       <BottomNavigation
         showLabels
