@@ -199,13 +199,13 @@ export const recognizeBarcode = async (imagePath) => {
     };
   }
 
-  // ⚡ Bolt: Downscale OCR fallback to 1200x960 max to cut Tesseract CPU time ~2.7x
+  // ⚡ Bolt: Downscale OCR fallback to 1200x960 max and skip PNG zlib compression for internal Tesseract buffer
   const processedImage = await sharp(rawData, {
     raw: { width: info.width, height: info.height, channels: 1 },
   })
     .resize({ width: 1200, height: 960, fit: 'inside', withoutEnlargement: true })
     .sharpen({ sigma: 1.2 })
-    .png()
+    .png({ compressionLevel: 0 })
     .toBuffer();
   const { data } = await runSerializedOcr(processedImage);
   const barcode = extractBarcodeCandidates(data.text || '')[0] || '';

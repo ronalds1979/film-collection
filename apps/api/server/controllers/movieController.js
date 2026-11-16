@@ -63,6 +63,39 @@ export const getMovies = async (req, res, next) => {
       return;
     }
 
+    if (req.query?.view === 'summary') {
+      // ⚡ Bolt: Project only summary fields for collection views, omitting heavy synopsis/notes/URL columns
+      const movies = await prisma.movie.findMany({
+        select: {
+          id: true,
+          title: true,
+          originalTitle: true,
+          alternativeTitle: true,
+          releaseYear: true,
+          watchedStatus: true,
+          favorite: true,
+          posterPath: true,
+          genres: { select: { id: true, name: true } },
+          editions: {
+            select: {
+              id: true,
+              editionYear: true,
+              frontCoverPath: true,
+              formatId: true,
+              editionTypeId: true,
+              steelbook: true,
+              slipcover: true,
+              digibook: true,
+              barcode: true,
+            },
+          },
+        },
+        orderBy: { title: 'asc' },
+      });
+      res.json(movies);
+      return;
+    }
+
     const movies = await prisma.movie.findMany({
       include: { editions: true, genres: true },
       orderBy: { title: 'asc' },
