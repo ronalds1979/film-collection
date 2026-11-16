@@ -102,13 +102,11 @@ const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
   const coverPath = movie.editions?.find((edition) => edition.frontCoverPath)?.frontCoverPath;
   const primaryImage = coverPath || movie.posterPath || '';
   const fallbackImage = coverPath && movie.posterPath && coverPath !== movie.posterPath ? movie.posterPath : '';
-  const [imagePath, setImagePath] = useState(primaryImage);
+  const [erroredSrc, setErroredSrc] = useState<string | null>(null);
 
-  useEffect(() => {
-    setImagePath(primaryImage);
-  }, [primaryImage]);
-
-  const imageUrl = imagePath;
+  const imageUrl = erroredSrc === primaryImage
+    ? fallbackImage
+    : (fallbackImage && erroredSrc === fallbackImage ? '' : primaryImage);
 
   return (
     <Card
@@ -149,8 +147,8 @@ const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
             loading="lazy"
             decoding="async"
             onError={() => {
-              if (fallbackImage && imagePath !== fallbackImage) setImagePath(fallbackImage);
-              else setImagePath('');
+              if (fallbackImage && imageUrl === primaryImage) setErroredSrc(primaryImage);
+              else if (imageUrl) setErroredSrc(imageUrl);
             }}
             sx={{ aspectRatio: '2 / 3', objectFit: 'cover', background: 'rgba(255,255,255,0.04)' }}
           />
@@ -373,11 +371,15 @@ export function CollectionPage() {
   }, [collectionView, filteredMovies]);
 
   const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchTerm('');
     setStatusFilter('all');
     setGenreFilter('all');
-  };
+  }, []);
+  const visibleRows = useMemo(
+    () => displayedRows.slice(0, visibleCount),
+    [displayedRows, visibleCount],
+  );
 
   const carouselShelves = useMemo(() => {
     if (genreFilter !== 'all') {
@@ -548,7 +550,7 @@ export function CollectionPage() {
         ) : (
         <>
           <CollectionMobileCards
-            rows={displayedRows.slice(0, visibleCount)}
+            rows={visibleRows}
             isLoading={isLoading}
             loadError={loadError}
             onSelect={handleSelectRow}
@@ -586,7 +588,7 @@ export function CollectionPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {displayedRows.slice(0, visibleCount).map(({ movie, edition }) => (
+              {visibleRows.map(({ movie, edition }) => (
                 <TableRow
                   key={`${movie.id}-${edition?.id || 'movie'}`}
                   hover

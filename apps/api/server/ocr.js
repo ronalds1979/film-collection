@@ -12,6 +12,7 @@ const {
 } = zxing;
 
 let workerPromise;
+let ocrQueue = Promise.resolve();
 
 const getWorker = () => {
   // ⚡ Bolt: Load only 'eng' traineddata and restrict character whitelist to digits for barcode OCR
@@ -25,6 +26,16 @@ const getWorker = () => {
   });
 
   return workerPromise;
+};
+
+const runSerializedOcr = (imageBuffer) => {
+  const job = ocrQueue.then(async () => {
+    const worker = await getWorker();
+    return worker.recognize(imageBuffer);
+  });
+  // Keep the queue alive even if a single recognition rejects
+  ocrQueue = job.catch(() => undefined);
+  return job;
 };
 
 export const preprocessBarcodeImage = async (imagePath) => {
@@ -165,8 +176,7 @@ export const recognizeBarcode = async (imagePath) => {
     .sharpen({ sigma: 1.2 })
     .png()
     .toBuffer();
-  const worker = await getWorker();
-  const { data } = await worker.recognize(processedImage);
+  const { data } = await runSerializedOcr(processedImage);
   const barcode = extractBarcodeCandidates(data.text || '')[0] || '';
 
   return {

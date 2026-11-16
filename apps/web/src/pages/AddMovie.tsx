@@ -263,12 +263,6 @@ export function AddMoviePage() {
         throw new Error(result.message || `Could not upload the ${slot} cover.`);
       }
 
-      const savedCoverUrl = `${API_BASE.replace(/\/api$/, '')}${uploadedFile.path}`;
-      const savedPreview = await fetch(savedCoverUrl, { method: 'HEAD', cache: 'no-store' });
-      if (!savedPreview.ok || !savedPreview.headers.get('content-type')?.startsWith('image/')) {
-        throw new Error(`${slot === 'front' ? 'Front' : 'Back'} photo uploaded, but the saved server copy could not be verified. Try capturing it again.`);
-      }
-
       const savedCover = { filename: uploadedFile.filename, path: uploadedFile.path };
       try {
         const existing = JSON.parse(sessionStorage.getItem(pendingCoversStorageKey) || '{}') as { front?: UploadedCover; back?: UploadedCover };

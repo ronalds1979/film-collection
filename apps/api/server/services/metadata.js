@@ -1,9 +1,11 @@
 const MAX_CACHE_SIZE = 200;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const metadataCache = new Map();
+const inFlightLookups = new Map();
 
 export const clearMetadataCache = () => {
   metadataCache.clear();
+  inFlightLookups.clear();
 };
 
 const setCachedMetadata = (key, value) => {
@@ -44,7 +46,13 @@ export const lookupMetadata = async (rawQuery) => {
     metadataCache.delete(cacheKey);
   }
 
-  const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
+  const existingPromise = inFlightLookups.get(cacheKey);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const lookupPromise = (async () => {
+    const tmdbReadAccessToken = process.env.TMDB_READ_ACCESS_TOKEN || '';
   const tmdbApiKey = process.env.TMDB_API_KEY || '';
   const omdbApiKey = process.env.OMDB_API_KEY || process.env.IMDB_API_KEY || '';
 
@@ -158,6 +166,14 @@ export const lookupMetadata = async (rawQuery) => {
       results,
     },
   };
-  setCachedMetadata(cacheKey, response);
-  return response;
+    setCachedMetadata(cacheKey, response);
+    return response;
+  })();
+
+  inFlightLookups.set(cacheKey, lookupPromise);
+  try {
+    return await lookupPromise;
+  } finally {
+    inFlightLookups.delete(cacheKey);
+  }
 };

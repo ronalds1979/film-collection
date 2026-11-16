@@ -1,4 +1,14 @@
 const IMMUTABLE_CACHE = 'film-collection-immutable-v1';
+const MAX_IMMUTABLE_ENTRIES = 250;
+
+const putBounded = async (cache, request, response) => {
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  if (keys.length > MAX_IMMUTABLE_ENTRIES) {
+    const excess = keys.length - MAX_IMMUTABLE_ENTRIES;
+    await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+  }
+};
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -24,7 +34,7 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached;
         const response = await fetch(event.request);
         if (response.ok) {
-          void cache.put(event.request, response.clone());
+          void putBounded(cache, event.request, response.clone());
         }
         return response;
       }),

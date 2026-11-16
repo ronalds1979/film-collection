@@ -88,6 +88,7 @@ const resolveUploadFilePath = (uploadPath) => {
 };
 
 const verifyUploadedCoversExist = async (payload, fields) => {
+  const checks = [];
   for (const field of fields) {
     const value = payload[field];
     if (!value || (field === 'posterPath' && !value.startsWith('/uploads/'))) {
@@ -97,27 +98,33 @@ const verifyUploadedCoversExist = async (payload, fields) => {
     if (!resolved) {
       return `${field} must reference an uploaded cover image.`;
     }
-    try {
-      const stat = await fs.promises.stat(resolved);
-      if (!stat.isFile()) {
-        return `${field} references a missing uploaded cover image.`;
-      }
-    } catch {
-      return `${field} references a missing uploaded cover image.`;
-    }
+    checks.push(
+      fs.promises.stat(resolved).then(
+        (stat) => (stat.isFile() ? null : `${field} references a missing uploaded cover image.`),
+        () => `${field} references a missing uploaded cover image.`,
+      ),
+    );
   }
-  return null;
+  if (!checks.length) return null;
+  const errors = await Promise.all(checks);
+  return errors.find(Boolean) || null;
 };
 
 const cleanupReplacedCoverFiles = async (previousPaths) => {
+  const tasks = [];
   for (const oldPath of previousPaths) {
     const resolved = resolveUploadFilePath(oldPath);
     if (!resolved) continue;
-    await fs.promises.unlink(resolved).catch((error) => {
-      if (error?.code !== 'ENOENT') {
-        console.error('Failed to remove replaced cover file', error instanceof Error ? error.name : 'Unknown error');
-      }
-    });
+    tasks.push(
+      fs.promises.unlink(resolved).catch((error) => {
+        if (error?.code !== 'ENOENT') {
+          console.error('Failed to remove replaced cover file', error instanceof Error ? error.name : 'Unknown error');
+        }
+      }),
+    );
+  }
+  if (tasks.length) {
+    await Promise.all(tasks);
   }
 };
 
@@ -285,7 +292,8 @@ app.use((req, res, next) => {
     }
     const serialized = JSON.stringify(body);
     if (serialized.length < 1024) {
-      return origJson(body);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.send(serialized);
     }
     zlib.gzip(serialized, (err, compressed) => {
       if (res.headersSent || res.writableEnded) {
@@ -772,6 +780,33 @@ app.get('/api/search', heavyEndpointLimiter, async (req, res, next) => {
   }
 });
 
+// ⚡ Bolt: Bounded LRU+TTL cache for external UPCItemDB barcode lookups
+const UPC_CACHE_MAX = 200;
+const UPC_CACHE_TTL_MS = 15 * 60 * 1000;
+const upcCache = new Map();
+
+const getCachedUpc = (barcode) => {
+  const entry = upcCache.get(barcode);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    upcCache.delete(barcode);
+    return null;
+  }
+  upcCache.delete(barcode);
+  upcCache.set(barcode, entry);
+  return entry.value;
+};
+
+const setCachedUpc = (barcode, value) => {
+  if (upcCache.has(barcode)) {
+    upcCache.delete(barcode);
+  } else if (upcCache.size >= UPC_CACHE_MAX) {
+    const oldestKey = upcCache.keys().next().value;
+    if (oldestKey !== undefined) upcCache.delete(oldestKey);
+  }
+  upcCache.set(barcode, { value, expiresAt: Date.now() + UPC_CACHE_TTL_MS });
+};
+
 app.get('/api/metadata/barcode', heavyEndpointLimiter, async (req, res, next) => {
   try {
     const barcode = String(req.query.barcode || '').replace(/\s/g, '');
@@ -806,38 +841,47 @@ app.get('/api/metadata/barcode', heavyEndpointLimiter, async (req, res, next) =>
         source: 'catalog',
       }));
 
-      const liveLookups = await Promise.all(catalogMovies.map((movie) => lookupMetadata(movie.title)));
-      const liveResults = liveLookups
-        .filter((lookup) => lookup.status === 200)
-        .flatMap((lookup) => lookup.payload.results);
-      // ⚡ Bolt: O(1) Set lookup for both TMDb IDs and normalized titles
-      const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
-      const catalogTitles = new Set(catalogResults.map((catalog) => (catalog.title || '').trim().toLowerCase()));
-      const results = [
-        ...catalogResults,
-        ...liveResults.filter((live) => (
-          !(live.id && catalogIds.has(live.id))
-          && !catalogTitles.has((live.title || '').trim().toLowerCase())
-        )),
-      ];
+      let results = catalogResults;
+      let hasLiveResults = false;
+      if (req.query.includeLive === 'true') {
+        const liveLookups = await Promise.all(catalogMovies.map((movie) => lookupMetadata(movie.title)));
+        const liveResults = liveLookups
+          .filter((lookup) => lookup.status === 200)
+          .flatMap((lookup) => lookup.payload.results);
+        hasLiveResults = liveResults.length > 0;
+        // ⚡ Bolt: O(1) Set lookup for both TMDb IDs and normalized titles
+        const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
+        const catalogTitles = new Set(catalogResults.map((catalog) => (catalog.title || '').trim().toLowerCase()));
+        results = [
+          ...catalogResults,
+          ...liveResults.filter((live) => (
+            !(live.id && catalogIds.has(live.id))
+            && !catalogTitles.has((live.title || '').trim().toLowerCase())
+          )),
+        ];
+      }
 
       return res.json({
         success: true,
         barcode,
-        source: liveResults.length ? 'catalog+live-metadata' : 'catalog',
-        message: `Barcode matched ${catalogMovies.length} catalog title${catalogMovies.length === 1 ? '' : 's'}${liveResults.length ? ' and live metadata was added' : ''}.`,
+        source: hasLiveResults ? 'catalog+live-metadata' : 'catalog',
+        message: `Barcode matched ${catalogMovies.length} catalog title${catalogMovies.length === 1 ? '' : 's'}${hasLiveResults ? ' and live metadata was added' : ''}.`,
         results,
       });
     }
 
-    const productUrl = new URL('https://api.upcitemdb.com/prod/trial/lookup');
-    productUrl.searchParams.set('upc', barcode);
-    const productResponse = await fetch(productUrl, { signal: AbortSignal.timeout(8000) });
-    if (!productResponse.ok) {
-      throw new Error(`UPCItemDB returned HTTP ${productResponse.status}.`);
-    }
+    let productData = getCachedUpc(barcode);
+    if (!productData) {
+      const productUrl = new URL('https://api.upcitemdb.com/prod/trial/lookup');
+      productUrl.searchParams.set('upc', barcode);
+      const productResponse = await fetch(productUrl, { signal: AbortSignal.timeout(8000) });
+      if (!productResponse.ok) {
+        throw new Error(`UPCItemDB returned HTTP ${productResponse.status}.`);
+      }
 
-    const productData = await productResponse.json();
+      productData = await productResponse.json();
+      setCachedUpc(barcode, productData);
+    }
     const product = Array.isArray(productData.items) ? productData.items[0] : null;
     if (!product?.title) {
       return res.json({
