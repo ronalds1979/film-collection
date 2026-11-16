@@ -230,6 +230,7 @@ export function AddMoviePage() {
 
       const response = await fetch(`${API_BASE}/upload-cover`, {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: data,
       });
       const responseText = await response.text();
@@ -371,7 +372,11 @@ export function AddMoviePage() {
       const preparedImage = await prepareMobileImage(file, 'barcode');
       const data = new FormData();
       data.append('image', preparedImage);
-      const response = await fetch(`${API_BASE}/barcode/read`, { method: 'POST', body: data });
+      const response = await fetch(`${API_BASE}/barcode/read`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: data,
+      });
       const responseText = await response.text();
       let result: {
         success?: boolean;
@@ -564,8 +569,11 @@ export function AddMoviePage() {
     try {
       const response = await fetch(isEditing ? `${API_BASE}/movies/${movieId}` : `${API_BASE}/ingest`, {
         method: isEditing ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(body),
       });
 
       const result = await response.json();

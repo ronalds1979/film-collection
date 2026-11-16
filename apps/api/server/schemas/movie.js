@@ -5,11 +5,13 @@ const optionalNumber = (schema) => z.preprocess(
   schema.optional().nullable(),
 );
 
+const SAFE_UPLOAD_PATH_REGEX = /^\/uploads\/(?!\.\.?$)[^/\\]+$/;
+
 const coverPathSchema = z
   .string()
   .trim()
   .max(255)
-  .refine((val) => val === '' || /^\/uploads\/[^/\\]+$/.test(val), {
+  .refine((val) => val === '' || SAFE_UPLOAD_PATH_REGEX.test(val), {
     message: 'Cover path must reference an uploaded cover image.',
   })
   .optional()
@@ -38,7 +40,7 @@ const safePosterSchema = z
   .string()
   .trim()
   .max(2048)
-  .refine((val) => val === '' || isSafeHttpUrl(val) || /^\/uploads\/[^/\\]+$/.test(val), {
+  .refine((val) => val === '' || isSafeHttpUrl(val) || SAFE_UPLOAD_PATH_REGEX.test(val), {
     message: 'posterPath must be an HTTP/HTTPS URL or uploaded image.',
   })
   .optional()

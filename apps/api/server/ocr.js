@@ -28,7 +28,7 @@ const getWorker = () => {
 };
 
 export const preprocessBarcodeImage = async (imagePath) => {
-  const image = sharp(imagePath, { failOn: 'error' })
+  const image = sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 })
     .rotate()
     .resize({
       width: 2400,
@@ -126,7 +126,7 @@ const detectBarcodeFromBuffer = (data, info) => {
 
 export const detectBarcode = async (imagePath) => {
   // ⚡ Bolt: Decode, resize, grayscale, and normalize once at 2000x1600 max instead of 4000x3200
-  const { data, info } = await sharp(imagePath, { failOn: 'error' })
+  const { data, info } = await sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 })
     .rotate()
     .resize({ width: 2000, height: 1600, fit: 'inside', withoutEnlargement: true })
     .flatten({ background: '#ffffff' })
@@ -140,7 +140,7 @@ export const detectBarcode = async (imagePath) => {
 
 export const recognizeBarcode = async (imagePath) => {
   // ⚡ Bolt: Decode image once and reuse raw grayscale buffer for OCR fallback if ZXing fails
-  const { data: rawData, info } = await sharp(imagePath, { failOn: 'error' })
+  const { data: rawData, info } = await sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 })
     .rotate()
     .resize({ width: 2000, height: 1600, fit: 'inside', withoutEnlargement: true })
     .flatten({ background: '#ffffff' })

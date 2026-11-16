@@ -34,7 +34,7 @@ export const getSummary = async (_req, res, next) => {
   }
 };
 
-export const getGenres = async (_req, res) => {
+export const getGenres = async (_req, res, next) => {
   try {
     if (!cachedGenres) {
       await seedGenres();
@@ -43,8 +43,7 @@ export const getGenres = async (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json(cachedGenres);
   } catch (error) {
-    console.error('Failed to load film genres.', error);
-    res.status(500).json({ message: 'Unable to load film genres.' });
+    next(error);
   }
 };
 
@@ -105,7 +104,7 @@ export const exportCatalog = async (_req, res, next) => {
   }
 };
 
-export const ingestMovie = async (req, res) => {
+export const ingestMovie = async (req, res, next) => {
   try {
     const payloadResult = ingestMovieSchema.safeParse(req.body);
     if (!payloadResult.success) {
@@ -194,12 +193,11 @@ export const ingestMovie = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Unable to ingest movie metadata.' });
+    next(error);
   }
 };
 
-export const updateMovie = async (req, res) => {
+export const updateMovie = async (req, res, next) => {
   const movieId = Number(req.params.id);
   if (!Number.isSafeInteger(movieId) || movieId < 1) {
     return res.status(400).json({ message: 'A valid movie ID is required.' });
@@ -295,8 +293,7 @@ export const updateMovie = async (req, res) => {
 
     res.json({ message: 'Movie and edition updated successfully.', ...result });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Unable to update movie metadata.' });
+    next(error);
   }
 };
 
@@ -314,7 +311,7 @@ export const searchMetadata = async (req, res, next) => {
   }
 };
 
-export const getBarcodeMetadata = async (req, res) => {
+export const getBarcodeMetadata = async (req, res, next) => {
   const barcode = String(req.query.barcode || '').replace(/\s/g, '');
   if (!isValidRetailBarcode(barcode)) {
     return res.status(400).json({
@@ -411,9 +408,12 @@ export const getBarcodeMetadata = async (req, res) => {
     });
   } catch (error) {
     console.error('Barcode metadata lookup failed', error instanceof Error ? error.name : 'Unknown error');
-    return res.status(502).json({
-      message: 'Barcode metadata lookup is temporarily unavailable. You can still search by movie title.',
-      results: [],
-    });
+    if (error instanceof Error && error.message.includes('returned HTTP')) {
+      return res.status(502).json({
+        message: 'Barcode metadata lookup is temporarily unavailable. You can still search by movie title.',
+        results: [],
+      });
+    }
+    next(error);
   }
 };

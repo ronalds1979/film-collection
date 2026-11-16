@@ -12,6 +12,7 @@ import pkg from '@prisma/client';
 const { PrismaClient } = pkg;
 import { isValidRetailBarcode, recognizeBarcode } from './ocr.js';
 import { lookupMetadata } from './services/metadata.js';
+import { ingestMovieSchema, updateMovieSchema } from './schemas/movie.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,29 +63,64 @@ const imageFileFilter = (_req, file, callback) => {
 // ⚡ Bolt: Keep cover uploads in memory to avoid disk write -> read -> unlink overhead
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: imageFileFilter,
 });
 
 // ⚡ Bolt: Keep barcode scans in memory to avoid disk write -> read -> unlink overhead
 const barcodeUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: imageFileFilter,
 });
 
-const normalize = (value) => (typeof value === 'string' ? value.trim() : value ?? '');
-const optionalNumber = (value) => (
-  value === undefined || value === null || value === '' ? null : Number(value)
-);
-const isSafeHttpUrl = (value) => {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
+const uploadsRoot = path.resolve(uploadsDir) + path.sep;
+const resolveUploadFilePath = (uploadPath) => {
+  if (!uploadPath || !uploadPath.startsWith('/uploads/')) {
+    return null;
+  }
+  const filename = uploadPath.slice('/uploads/'.length);
+  if (!filename || filename === '.' || filename === '..' || filename.includes('/') || filename.includes('\\')) {
+    return null;
+  }
+  const resolved = path.resolve(uploadsDir, filename);
+  return resolved.startsWith(uploadsRoot) ? resolved : null;
+};
+
+const verifyUploadedCoversExist = async (payload, fields) => {
+  for (const field of fields) {
+    const value = payload[field];
+    if (!value || (field === 'posterPath' && !value.startsWith('/uploads/'))) {
+      continue;
+    }
+    const resolved = resolveUploadFilePath(value);
+    if (!resolved) {
+      return `${field} must reference an uploaded cover image.`;
+    }
+    try {
+      const stat = await fs.promises.stat(resolved);
+      if (!stat.isFile()) {
+        return `${field} references a missing uploaded cover image.`;
+      }
+    } catch {
+      return `${field} references a missing uploaded cover image.`;
+    }
+  }
+  return null;
+};
+
+const cleanupReplacedCoverFiles = async (previousPaths) => {
+  for (const oldPath of previousPaths) {
+    const resolved = resolveUploadFilePath(oldPath);
+    if (!resolved) continue;
+    await fs.promises.unlink(resolved).catch((error) => {
+      if (error?.code !== 'ENOENT') {
+        console.error('Failed to remove replaced cover file', error instanceof Error ? error.name : 'Unknown error');
+      }
+    });
   }
 };
+
 let genreSeedPromise;
 const seedGenres = () => {
   if (!genreSeedPromise) {
@@ -132,8 +168,8 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      connectSrc: ["'self'", 'https:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://image.tmdb.org', 'https://m.media-amazon.com'],
+      connectSrc: ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -177,6 +213,62 @@ const createRateLimiter = ({ windowMs = RATE_LIMIT_WINDOW_MS, maxRequests = RATE
 };
 
 const heavyEndpointLimiter = createRateLimiter();
+const globalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 300 });
+const apiAuthToken = (process.env.API_AUTH_TOKEN || '').trim();
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const SAFE_FETCH_SITES = new Set(['same-origin', 'same-site', 'none']);
+
+const isTimingSafeEqual = (a, b) => {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuf, bBuf);
+};
+
+app.use('/api', globalApiLimiter);
+
+app.use('/api', (req, res, next) => {
+  if (!apiAuthToken || req.path === '/health') {
+    next();
+    return;
+  }
+  const authHeader = req.get('authorization') || '';
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  const providedToken = (bearerMatch ? bearerMatch[1] : req.get('x-api-key') || '').trim();
+  if (!providedToken || !isTimingSafeEqual(providedToken, apiAuthToken)) {
+    res.status(401).json({ success: false, message: 'Authentication required.' });
+    return;
+  }
+  next();
+});
+
+app.use('/api', (req, res, next) => {
+  if (!MUTATING_METHODS.has(req.method)) {
+    next();
+    return;
+  }
+  const origin = req.get('origin');
+  const secFetchSite = req.get('sec-fetch-site');
+
+  if (origin) {
+    if (!allowedCorsOrigins.has(origin) || secFetchSite === 'cross-site') {
+      res.status(403).json({ success: false, message: 'Cross-origin request blocked.' });
+      return;
+    }
+    next();
+    return;
+  }
+
+  if (secFetchSite && !SAFE_FETCH_SITES.has(secFetchSite)) {
+    res.status(403).json({ success: false, message: 'Cross-site request blocked.' });
+    return;
+  }
+
+  next();
+});
 
 app.use(express.json({ limit: '2mb' }));
 // ⚡ Bolt: Gzip-compress large JSON/text responses (>1 KB) using built-in zlib
@@ -188,11 +280,17 @@ app.use((req, res, next) => {
   }
   const origJson = res.json.bind(res);
   res.json = (body) => {
+    if (res.headersSent || res.writableEnded) {
+      return res;
+    }
     const serialized = JSON.stringify(body);
     if (serialized.length < 1024) {
       return origJson(body);
     }
     zlib.gzip(serialized, (err, compressed) => {
+      if (res.headersSent || res.writableEnded) {
+        return;
+      }
       if (err) {
         origJson(body);
         return;
@@ -330,7 +428,7 @@ app.get('/api/editions', async (req, res, next) => {
   }
 });
 
-app.get('/api/export', async (_req, res, next) => {
+app.get('/api/export', heavyEndpointLimiter, async (_req, res, next) => {
   try {
     const movies = await prisma.movie.findMany({
       include: { editions: true, genres: true },
@@ -361,7 +459,7 @@ app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), asyn
   try {
     // 🛡️ Sentinel: Always re-encode uploaded covers via Sharp to strip EXIF/GPS metadata
     // ⚡ Bolt: Read directly from memory buffer and cap dimensions/quality for fast decode and smaller payloads
-    await sharp(req.file.buffer, { failOn: 'error' })
+    await sharp(req.file.buffer, { failOn: 'error', limitInputPixels: 25_000_000 })
       .rotate()
       .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
       .flatten({ background: '#ffffff' })
@@ -429,26 +527,22 @@ app.post('/api/barcode/read', heavyEndpointLimiter, barcodeUpload.single('image'
   }
 });
 
-app.use((error, _req, res, _next) => {
-  console.error('Request failed', error);
-  const status = error instanceof multer.MulterError ? 400 : (error.status || 500);
-  res.status(status).json({ success: false, message: 'The request could not be processed.' });
-});
-
-app.post('/api/ingest', async (req, res, next) => {
+app.post('/api/ingest', heavyEndpointLimiter, async (req, res, next) => {
   try {
-    const payload = req.body || {};
-    const title = normalize(payload.title);
-    if (!title) {
-      res.status(400).json({ message: 'A movie title is required.' });
+    const payloadResult = ingestMovieSchema.safeParse(req.body || {});
+    if (!payloadResult.success) {
+      res.status(400).json({ message: payloadResult.error.errors[0].message, errors: payloadResult.error.errors });
+      return;
+    }
+    const payload = payloadResult.data;
+
+    const coverCheckError = await verifyUploadedCoversExist(payload, ['frontCoverPath', 'backCoverPath', 'spineImagePath', 'posterPath']);
+    if (coverCheckError) {
+      res.status(400).json({ message: coverCheckError });
       return;
     }
 
-    const genreIds = payload.genreIds === undefined ? [] : parseGenreIds(payload.genreIds);
-    if (!genreIds) {
-      res.status(400).json({ message: 'genreIds must be an array of genre identifiers.' });
-      return;
-    }
+    const genreIds = [...new Set(payload.genreIds || [])];
     await seedGenres();
     if (genreIds.length > 0) {
       const knownGenres = await prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } });
@@ -458,99 +552,30 @@ app.post('/api/ingest', async (req, res, next) => {
       }
     }
 
-    const integerFields = [
-      ['releaseYear', 'Release year'],
-      ['durationMinutes', 'Duration'],
-      ['personalRating', 'Personal rating'],
-      ['editionYear', 'Edition year'],
-      ['discCount', 'Disc count'],
-    ];
-    for (const [field, label] of integerFields) {
-      const value = payload[field];
-      if (value !== undefined && value !== null && value !== '' && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) {
-        res.status(400).json({ message: `${label} must be a non-negative whole number.` });
-        return;
-      }
-    }
-
-    for (const [field, label] of [['purchasePrice', 'Purchase price'], ['estimatedValue', 'Estimated value']]) {
-      const value = payload[field];
-      if (value !== undefined && value !== null && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) {
-        res.status(400).json({ message: `${label} must be a non-negative amount.` });
-        return;
-      }
-    }
-
-    const identifierFields = [
-      'countryId',
-      'originalLanguageId',
-      'formatId',
-      'editionTypeId',
-      'movieVersionId',
-      'distributorId',
-      'countryEditionId',
-      'locationId',
-      'collectionId',
-    ];
-    for (const field of identifierFields) {
-      const value = payload[field];
-      if (value !== undefined && value !== null && value !== '' && typeof value !== 'string') {
-        res.status(400).json({ message: `${field} must be a text identifier.` });
-        return;
-      }
-    }
-
-    const booleanFields = ['favorite', 'rewatchFlag', 'steelbook', 'slipcover', 'digibook', 'booklet', 'posterIncluded'];
-    for (const field of booleanFields) {
-      const value = payload[field];
-      if (value !== undefined && typeof value !== 'boolean') {
-        res.status(400).json({ message: `${field} must be a boolean value.` });
-        return;
-      }
-    }
-
-    // 🛡️ Sentinel: Validate cover paths on ingest to prevent path traversal or arbitrary URL injection
-    for (const field of ['frontCoverPath', 'backCoverPath', 'spineImagePath']) {
-      const value = payload[field];
-      if (value !== undefined && value !== null && value !== '' && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
-        res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
-        return;
-      }
-    }
-
-    // 🛡️ Sentinel: Validate external URLs to block javascript: or data: URI injection
-    for (const field of ['imdbUrl', 'tmdbUrl', 'posterPath']) {
-      const value = normalize(payload[field]);
-      if (value && !(isSafeHttpUrl(value) || (field === 'posterPath' && /^\/uploads\/[^/\\]+$/.test(value)))) {
-        res.status(400).json({ message: `${field} must be a valid HTTP/HTTPS URL.` });
-        return;
-      }
-    }
-
     const { movie, edition } = await prisma.$transaction(async (transaction) => {
       const movie = await transaction.movie.create({
         data: {
-        title,
-        originalTitle: normalize(payload.originalTitle) || null,
-        alternativeTitle: normalize(payload.alternativeTitle) || null,
-        releaseYear: optionalNumber(payload.releaseYear),
-        releaseDate: normalize(payload.releaseDate) || null,
-        countryId: normalize(payload.countryId) || null,
-        durationMinutes: optionalNumber(payload.durationMinutes),
-        synopsis: normalize(payload.synopsis) || null,
-        originalLanguageId: normalize(payload.originalLanguageId) || null,
-        ageRating: normalize(payload.ageRating) || null,
-        personalRating: optionalNumber(payload.personalRating),
+        title: payload.title,
+        originalTitle: payload.originalTitle || null,
+        alternativeTitle: payload.alternativeTitle || null,
+        releaseYear: payload.releaseYear ?? null,
+        releaseDate: payload.releaseDate || null,
+        countryId: payload.countryId || null,
+        durationMinutes: payload.durationMinutes ?? null,
+        synopsis: payload.synopsis || null,
+        originalLanguageId: payload.originalLanguageId || null,
+        ageRating: payload.ageRating || null,
+        personalRating: payload.personalRating ?? null,
         favorite: Boolean(payload.favorite),
-        watchedStatus: normalize(payload.watchedStatus) || 'unwatched',
-        watchedDate: normalize(payload.watchedDate) || null,
+        watchedStatus: payload.watchedStatus || 'unwatched',
+        watchedDate: payload.watchedDate || null,
         rewatchFlag: Boolean(payload.rewatchFlag),
-        notes: normalize(payload.notes) || null,
-        posterPath: normalize(payload.posterPath) || null,
-        imdbId: normalize(payload.imdbId) || null,
-        tmdbId: normalize(payload.tmdbId) || null,
-        imdbUrl: normalize(payload.imdbUrl) || null,
-        tmdbUrl: normalize(payload.tmdbUrl) || null,
+        notes: payload.notes || null,
+        posterPath: payload.posterPath || null,
+        imdbId: payload.imdbId || null,
+        tmdbId: payload.tmdbId || null,
+        imdbUrl: payload.imdbUrl || null,
+        tmdbUrl: payload.tmdbUrl || null,
         genres: { connect: genreIds.map((id) => ({ id })) },
         },
       });
@@ -558,31 +583,31 @@ app.post('/api/ingest', async (req, res, next) => {
       const edition = await transaction.edition.create({
         data: {
         movieId: movie.id,
-        formatId: normalize(payload.formatId) || null,
-        editionTypeId: normalize(payload.editionTypeId) || null,
-        movieVersionId: normalize(payload.movieVersionId) || null,
-        distributorId: normalize(payload.distributorId) || null,
-        countryEditionId: normalize(payload.countryEditionId) || null,
-        editionYear: optionalNumber(payload.editionYear),
-        region: normalize(payload.region) || null,
-        barcode: normalize(payload.barcode) || null,
-        catalogNumber: normalize(payload.catalogNumber) || null,
+        formatId: payload.formatId || null,
+        editionTypeId: payload.editionTypeId || null,
+        movieVersionId: payload.movieVersionId || null,
+        distributorId: payload.distributorId || null,
+        countryEditionId: payload.countryEditionId || null,
+        editionYear: payload.editionYear ?? null,
+        region: payload.region || null,
+        barcode: payload.barcode || null,
+        catalogNumber: payload.catalogNumber || null,
         steelbook: Boolean(payload.steelbook),
         slipcover: Boolean(payload.slipcover),
         digibook: Boolean(payload.digibook),
         booklet: Boolean(payload.booklet),
         posterIncluded: Boolean(payload.posterIncluded),
-        discCount: optionalNumber(payload.discCount),
-        condition: normalize(payload.condition) || null,
-        purchaseDate: normalize(payload.purchaseDate) || null,
-        purchasePrice: optionalNumber(payload.purchasePrice),
-        estimatedValue: optionalNumber(payload.estimatedValue),
-        locationId: normalize(payload.locationId) || null,
-        collectionId: normalize(payload.collectionId) || null,
-        frontCoverPath: normalize(payload.frontCoverPath) || null,
-        backCoverPath: normalize(payload.backCoverPath) || null,
-        spineImagePath: normalize(payload.spineImagePath) || null,
-        notes: normalize(payload.editionNotes) || null,
+        discCount: payload.discCount ?? null,
+        condition: payload.condition || null,
+        purchaseDate: payload.purchaseDate || null,
+        purchasePrice: payload.purchasePrice ?? null,
+        estimatedValue: payload.estimatedValue ?? null,
+        locationId: payload.locationId || null,
+        collectionId: payload.collectionId || null,
+        frontCoverPath: payload.frontCoverPath || null,
+        backCoverPath: payload.backCoverPath || null,
+        spineImagePath: payload.spineImagePath || null,
+        notes: payload.editionNotes || null,
         },
       });
 
@@ -603,130 +628,38 @@ app.post('/api/ingest', async (req, res, next) => {
   }
 });
 
-app.put('/api/movies/:id', async (req, res, next) => {
+app.put('/api/movies/:id', heavyEndpointLimiter, async (req, res, next) => {
   try {
     const movieId = Number(req.params.id);
-    const payload = req.body || {};
-    const editionId = Number(payload.editionId);
-    const title = normalize(payload.title);
-
-    if (!Number.isSafeInteger(movieId) || movieId < 1 || !Number.isSafeInteger(editionId) || editionId < 1) {
-      res.status(400).json({ message: 'A valid movie and edition are required.' });
-      return;
-    }
-    if (!title) {
-      res.status(400).json({ message: 'A movie title is required.' });
-      return;
-    }
-    const genreIds = parseGenreIds(payload.genreIds);
-    if (payload.genreIds !== undefined && !genreIds) {
-      res.status(400).json({ message: 'genreIds must be an array of genre identifiers.' });
+    if (!Number.isSafeInteger(movieId) || movieId < 1) {
+      res.status(400).json({ message: 'A valid movie ID is required.' });
       return;
     }
 
-    const integerFields = [
-      ['releaseYear', 'Release year'],
-    ['editionYear', 'Edition year'],
-    ['discCount', 'Disc count'],
-  ];
-  for (const [field, label] of integerFields) {
-    const value = payload[field];
-    if (value !== undefined && value !== null && value !== '' && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) {
-      res.status(400).json({ message: `${label} must be a non-negative whole number.` });
+    const payloadResult = updateMovieSchema.safeParse(req.body || {});
+    if (!payloadResult.success) {
+      res.status(400).json({ message: payloadResult.error.errors[0].message, errors: payloadResult.error.errors });
       return;
     }
-  }
+    const payload = payloadResult.data;
 
-  for (const [field, label] of [['purchasePrice', 'Purchase price'], ['estimatedValue', 'Estimated value']]) {
-    const value = payload[field];
-    if (value !== undefined && value !== null && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) {
-      res.status(400).json({ message: `${label} must be a non-negative amount.` });
+    const coverCheckError = await verifyUploadedCoversExist(payload, ['frontCoverPath', 'backCoverPath', 'spineImagePath', 'posterPath']);
+    if (coverCheckError) {
+      res.status(400).json({ message: coverCheckError });
       return;
     }
-  }
 
-  const identifierFields = [
-    'countryId',
-    'originalLanguageId',
-    'formatId',
-    'editionTypeId',
-    'movieVersionId',
-    'distributorId',
-    'countryEditionId',
-    'locationId',
-    'collectionId',
-  ];
-  for (const field of identifierFields) {
-    const value = payload[field];
-    if (value !== undefined && value !== null && value !== '' && typeof value !== 'string') {
-      res.status(400).json({ message: `${field} must be a text identifier.` });
-      return;
-    }
-  }
-
-  const textFields = [
-    'title',
-    'originalTitle',
-    'alternativeTitle',
-    'releaseDate',
-    'ageRating',
-    'synopsis',
-    'notes',
-    'watchedStatus',
-    'watchedDate',
-    'imdbId',
-    'tmdbId',
-    'imdbUrl',
-    'tmdbUrl',
-    'posterPath',
-    'region',
-    'barcode',
-    'catalogNumber',
-    'condition',
-    'editionNotes',
-  ];
-  for (const field of textFields) {
-    const value = payload[field];
-    if (value !== undefined && value !== null && value !== '' && typeof value !== 'string') {
-      res.status(400).json({ message: `${field} must be text.` });
-      return;
-    }
-  }
-
-  const booleanFields = ['favorite', 'steelbook', 'slipcover', 'digibook', 'booklet', 'posterIncluded'];
-  for (const field of booleanFields) {
-    const value = payload[field];
-    if (value !== undefined && typeof value !== 'boolean') {
-      res.status(400).json({ message: `${field} must be a boolean value.` });
-      return;
-    }
-  }
-
-    for (const field of ['frontCoverPath', 'backCoverPath']) {
-      const value = payload[field];
-      if (value !== undefined && value !== null && (typeof value !== 'string' || !/^\/uploads\/[^/\\]+$/.test(value))) {
-        res.status(400).json({ message: `${field} must reference an uploaded cover image.` });
-        return;
-      }
-    }
-
-    for (const field of ['imdbUrl', 'tmdbUrl', 'posterPath']) {
-      const value = normalize(payload[field]);
-      if (value && !(isSafeHttpUrl(value) || (field === 'posterPath' && /^\/uploads\/[^/\\]+$/.test(value)))) {
-        res.status(400).json({ message: `${field} must be a valid HTTP/HTTPS URL.` });
-        return;
-      }
-    }
+    const genreIds = [...new Set(payload.genreIds || [])];
 
     // ⚡ Bolt: Run validation queries concurrently and select only required columns
     const [, knownGenres, existingMovie, existingEdition] = await Promise.all([
       seedGenres(),
-      genreIds && genreIds.length > 0
+      genreIds.length > 0
         ? prisma.genre.findMany({ where: { id: { in: genreIds } }, select: { id: true } })
         : Promise.resolve(null),
       prisma.movie.findUnique({ where: { id: movieId }, select: { id: true } }),
       prisma.edition.findFirst({
-        where: { id: editionId, movieId },
+        where: { id: payload.editionId, movieId },
         select: { id: true, frontCoverPath: true, backCoverPath: true },
       }),
     ]);
@@ -745,60 +678,79 @@ app.put('/api/movies/:id', async (req, res, next) => {
     }
 
     const movieData = {
-      title,
-      originalTitle: normalize(payload.originalTitle) || null,
-      alternativeTitle: normalize(payload.alternativeTitle) || null,
-      releaseYear: optionalNumber(payload.releaseYear),
-      releaseDate: normalize(payload.releaseDate) || null,
-      countryId: normalize(payload.countryId) || null,
-      originalLanguageId: normalize(payload.originalLanguageId) || null,
-      ageRating: normalize(payload.ageRating) || null,
-      synopsis: normalize(payload.synopsis) || null,
-      notes: normalize(payload.notes) || null,
+      title: payload.title,
+      originalTitle: payload.originalTitle || null,
+      alternativeTitle: payload.alternativeTitle || null,
+      releaseYear: payload.releaseYear ?? null,
+      releaseDate: payload.releaseDate || null,
+      countryId: payload.countryId || null,
+      originalLanguageId: payload.originalLanguageId || null,
+      ageRating: payload.ageRating || null,
+      synopsis: payload.synopsis || null,
+      notes: payload.notes || null,
       favorite: Boolean(payload.favorite),
-      watchedStatus: normalize(payload.watchedStatus) || 'unwatched',
-      watchedDate: normalize(payload.watchedDate) || null,
-      imdbId: normalize(payload.imdbId) || null,
-      tmdbId: normalize(payload.tmdbId) || null,
-      imdbUrl: normalize(payload.imdbUrl) || null,
-      tmdbUrl: normalize(payload.tmdbUrl) || null,
-      posterPath: normalize(payload.posterPath) || null,
-      ...(genreIds ? { genres: { set: genreIds.map((id) => ({ id })) } } : {}),
+      watchedStatus: payload.watchedStatus || 'unwatched',
+      watchedDate: payload.watchedDate || null,
+      imdbId: payload.imdbId || null,
+      tmdbId: payload.tmdbId || null,
+      imdbUrl: payload.imdbUrl || null,
+      tmdbUrl: payload.tmdbUrl || null,
+      posterPath: payload.posterPath || null,
+      genres: { set: genreIds.map((id) => ({ id })) },
     };
+    const nextFrontCoverPath = payload.frontCoverPath !== undefined ? (payload.frontCoverPath || null) : existingEdition.frontCoverPath;
+    const nextBackCoverPath = payload.backCoverPath !== undefined ? (payload.backCoverPath || null) : existingEdition.backCoverPath;
     const editionData = {
-      formatId: normalize(payload.formatId) || null,
-      editionTypeId: normalize(payload.editionTypeId) || null,
-      movieVersionId: normalize(payload.movieVersionId) || null,
-      distributorId: normalize(payload.distributorId) || null,
-      countryEditionId: normalize(payload.countryEditionId) || null,
-      editionYear: optionalNumber(payload.editionYear),
-      region: normalize(payload.region) || null,
-      barcode: normalize(payload.barcode) || null,
-      catalogNumber: normalize(payload.catalogNumber) || null,
+      formatId: payload.formatId || null,
+      editionTypeId: payload.editionTypeId || null,
+      movieVersionId: payload.movieVersionId || null,
+      distributorId: payload.distributorId || null,
+      countryEditionId: payload.countryEditionId || null,
+      editionYear: payload.editionYear ?? null,
+      region: payload.region || null,
+      barcode: payload.barcode || null,
+      catalogNumber: payload.catalogNumber || null,
       steelbook: Boolean(payload.steelbook),
       slipcover: Boolean(payload.slipcover),
       digibook: Boolean(payload.digibook),
       booklet: Boolean(payload.booklet),
       posterIncluded: Boolean(payload.posterIncluded),
-      discCount: optionalNumber(payload.discCount),
-      condition: normalize(payload.condition) || null,
-      purchasePrice: optionalNumber(payload.purchasePrice),
-      estimatedValue: optionalNumber(payload.estimatedValue),
-      locationId: normalize(payload.locationId) || null,
-      collectionId: normalize(payload.collectionId) || null,
-      notes: normalize(payload.editionNotes) || null,
-      ...(payload.frontCoverPath !== undefined ? { frontCoverPath: normalize(payload.frontCoverPath) || null } : {}),
-      ...(payload.backCoverPath !== undefined ? { backCoverPath: normalize(payload.backCoverPath) || null } : {}),
+      discCount: payload.discCount ?? null,
+      condition: payload.condition || null,
+      purchasePrice: payload.purchasePrice ?? null,
+      estimatedValue: payload.estimatedValue ?? null,
+      locationId: payload.locationId || null,
+      collectionId: payload.collectionId || null,
+      notes: payload.editionNotes || null,
+      ...(payload.frontCoverPath !== undefined ? { frontCoverPath: nextFrontCoverPath } : {}),
+      ...(payload.backCoverPath !== undefined ? { backCoverPath: nextBackCoverPath } : {}),
     };
 
     const result = await prisma.$transaction(async (transaction) => {
       const movie = await transaction.movie.update({ where: { id: movieId }, data: movieData });
       const edition = await transaction.edition.update({
-        where: { id: editionId },
+        where: { id: payload.editionId },
         data: editionData,
       });
       return { movie, edition };
     });
+
+    const replacedCovers = [];
+    if (
+      payload.frontCoverPath !== undefined
+      && existingEdition.frontCoverPath
+      && existingEdition.frontCoverPath !== nextFrontCoverPath
+    ) {
+      replacedCovers.push(existingEdition.frontCoverPath);
+    }
+    if (
+      payload.backCoverPath !== undefined
+      && existingEdition.backCoverPath
+      && existingEdition.backCoverPath !== nextBackCoverPath
+    ) {
+      replacedCovers.push(existingEdition.backCoverPath);
+    }
+    await cleanupReplacedCoverFiles(replacedCovers);
 
     res.json({ message: 'Movie and edition updated successfully.', ...result });
   } catch (error) {
@@ -806,7 +758,7 @@ app.put('/api/movies/:id', async (req, res, next) => {
   }
 });
 
-app.get('/api/search', async (req, res, next) => {
+app.get('/api/search', heavyEndpointLimiter, async (req, res, next) => {
   try {
     const query = String(req.query.query || '').trim();
     if (!query || query.length > 200) {
@@ -820,7 +772,7 @@ app.get('/api/search', async (req, res, next) => {
   }
 });
 
-app.get('/api/metadata/barcode', async (req, res, next) => {
+app.get('/api/metadata/barcode', heavyEndpointLimiter, async (req, res, next) => {
   try {
     const barcode = String(req.query.barcode || '').replace(/\s/g, '');
     if (!isValidRetailBarcode(barcode)) {
@@ -944,11 +896,27 @@ app.get('*', (req, res, next) => {
   });
 });
 
+app.use((error, _req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  console.error('Request failed', error);
+  const status = error instanceof multer.MulterError ? 400 : (error.status || 500);
+  res.status(status).json({ success: false, message: 'The request could not be processed.' });
+});
+
 async function start() {
+  const host = process.env.HOST || '127.0.0.1';
+  if (!LOOPBACK_HOSTS.has(host) && !apiAuthToken && process.env.ALLOW_UNAUTHENTICATED_LAN !== 'true') {
+    throw new Error(
+      `Refusing to bind to non-loopback host "${host}" without API_AUTH_TOKEN configured. Set API_AUTH_TOKEN or explicitly set ALLOW_UNAUTHENTICATED_LAN=true.`,
+    );
+  }
+
   await prisma.$connect();
   await seedGenres();
 
-  const host = process.env.HOST || '127.0.0.1';
   app.listen(port, host, () => {
     console.log(`Film collection API listening on http://${host}:${port}`);
   });
