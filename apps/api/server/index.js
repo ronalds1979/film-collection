@@ -382,9 +382,39 @@ app.get('/api/movies', async (req, res, next) => {
     const rawOffset = req.query.offset;
     const offset = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
     const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
+    const isSummary = req.query.view === 'summary';
 
     const movies = await prisma.movie.findMany({
-      include: { editions: true, genres: true },
+      ...(isSummary
+        ? {
+            select: {
+              id: true,
+              title: true,
+              originalTitle: true,
+              alternativeTitle: true,
+              releaseYear: true,
+              watchedStatus: true,
+              favorite: true,
+              posterPath: true,
+              editions: {
+                select: {
+                  id: true,
+                  mediaType: true,
+                  editionType: true,
+                  frontCoverPath: true,
+                },
+              },
+              genres: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          }
+        : {
+            include: { editions: true, genres: true },
+          }),
       orderBy: { title: 'asc' },
       ...(take !== undefined ? { take } : {}),
       ...(offset !== undefined ? { skip: offset } : {}),

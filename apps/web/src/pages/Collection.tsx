@@ -180,12 +180,15 @@ const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
   );
 });
 
+const INITIAL_CAROUSEL_ITEMS = 14;
+
 const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelect }: {
   genre: Genre;
   movies: Movie[];
   onSelect: (movie: Movie) => void;
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
+  const [renderedCount, setRenderedCount] = useState(INITIAL_CAROUSEL_ITEMS);
   const sortedMovies = useMemo(
     () => [...movies].sort((left, right) => baseCollator.compare(
       left.alternativeTitle || left.title,
@@ -194,8 +197,32 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
     [movies],
   );
 
+  useEffect(() => {
+    setRenderedCount(INITIAL_CAROUSEL_ITEMS);
+  }, [movies]);
+
+  const visibleMovies = useMemo(
+    () => sortedMovies.slice(0, renderedCount),
+    [sortedMovies, renderedCount],
+  );
+
+  const loadMoreIfNeeded = () => {
+    if (renderedCount < sortedMovies.length) {
+      setRenderedCount((prev) => Math.min(prev + INITIAL_CAROUSEL_ITEMS, sortedMovies.length));
+    }
+  };
+
   return (
-    <Paper sx={{ p: { xs: 1.5, sm: 2.5 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
+    <Paper
+      sx={{
+        p: { xs: 1.5, sm: 2.5 },
+        borderRadius: 3,
+        background: 'rgba(18,28,46,0.9)',
+        // ⚡ Bolt: Skip layout/paint for off-screen genre shelves
+        contentVisibility: 'auto',
+        containIntrinsicSize: '0 340px',
+      }}
+    >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
@@ -210,7 +237,10 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
           <Tooltip title="Scroll right">
             <IconButton
               aria-label={`Scroll ${genre.name} movies right`}
-              onClick={() => carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}
+              onClick={() => {
+                loadMoreIfNeeded();
+                carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' });
+              }}
             >
               <ChevronRightRounded />
             </IconButton>
@@ -221,6 +251,12 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
         ref={carouselRef}
         role="list"
         aria-label={`${genre.name} movies`}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 400) {
+            loadMoreIfNeeded();
+          }
+        }}
         sx={{
           display: 'flex',
           gap: 1.5,
@@ -232,7 +268,7 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
           '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(138,180,255,0.35)', borderRadius: 4 },
         }}
       >
-        {sortedMovies.map((movie) => (
+        {visibleMovies.map((movie) => (
           <MoviePosterCard key={movie.id} movie={movie} onSelect={onSelect} />
         ))}
       </Box>
@@ -274,7 +310,7 @@ export function CollectionPage() {
     let cancelled = false;
     const loadMovies = async () => {
       try {
-        const response = await fetch(`${API_BASE}/movies`);
+        const response = await fetch(`${API_BASE}/movies?view=summary`);
         if (!response.ok) throw new Error(`The collection could not be loaded (HTTP ${response.status}).`);
         const payload = await response.json() as Movie[];
         if (!Array.isArray(payload)) throw new Error('The collection API returned an invalid response.');
