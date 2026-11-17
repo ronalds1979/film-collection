@@ -6,32 +6,74 @@ type FilterTab = 'All' | 'Unwatched' | 'Favorites';
 
 const FILTER_TABS: FilterTab[] = ['All', 'Unwatched', 'Favorites'];
 
-const WORKFLOW_STEPS = [
-  {
-    step: '1',
-    title: 'Scan or enter the barcode',
-    detail: 'Quick-match physical packaging via UPC/EAN.',
-    tag: 'Intake',
-  },
-  {
-    step: '2',
-    title: 'Enrich live movie metadata',
-    detail: 'Pull title, original title, release year, and synopsis.',
-    tag: 'Metadata',
-  },
-  {
-    step: '3',
-    title: 'Capture front & back cover art',
-    detail: 'Store high-res edition artwork directly in your catalog.',
-    tag: 'Covers',
-  },
-  {
-    step: '4',
-    title: 'Tag physical edition & packaging',
-    detail: 'Record format, region, Steelbook/Slipcover, and shelf.',
-    tag: 'Edition',
-  },
-];
+const TAB_CARDS: Record<FilterTab, Array<{ step: string; title: string; detail: string; tag: string }>> = {
+  All: [
+    {
+      step: '1',
+      title: 'Scan or enter the barcode',
+      detail: 'Quick-match physical packaging via UPC/EAN.',
+      tag: 'Intake',
+    },
+    {
+      step: '2',
+      title: 'Enrich live movie metadata',
+      detail: 'Pull title, original title, release year, and synopsis.',
+      tag: 'Metadata',
+    },
+    {
+      step: '3',
+      title: 'Capture front & back cover art',
+      detail: 'Store high-res edition artwork directly in your catalog.',
+      tag: 'Covers',
+    },
+    {
+      step: '4',
+      title: 'Tag physical edition & packaging',
+      detail: 'Record format, region, Steelbook/Slipcover, and shelf.',
+      tag: 'Edition',
+    },
+  ],
+  Unwatched: [
+    {
+      step: '1',
+      title: 'Verify watched status on intake',
+      detail: 'New editions default to unwatched so they stay queued for movie night.',
+      tag: 'Queue',
+    },
+    {
+      step: '2',
+      title: 'Record shelf & collection name',
+      detail: 'Pinpoint exact room or shelf location to pull discs quickly.',
+      tag: 'Storage',
+    },
+    {
+      step: '3',
+      title: 'Log watched date after screening',
+      detail: 'Mark movies watched in the web editor to update your backlog count.',
+      tag: 'History',
+    },
+  ],
+  Favorites: [
+    {
+      step: '1',
+      title: 'Star standout films',
+      detail: 'Toggle Favorite in the movie details form to highlight top picks.',
+      tag: 'Curated',
+    },
+    {
+      step: '2',
+      title: 'Document collector packaging',
+      detail: 'Track Steelbooks, Slipcovers, Digibooks, booklets, and included posters.',
+      tag: 'Collector',
+    },
+    {
+      step: '3',
+      title: 'Track edition value & condition',
+      detail: 'Save purchase price, estimated value, and condition notes.',
+      tag: 'Valuation',
+    },
+  ],
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
@@ -84,12 +126,17 @@ export default function App() {
         </View>
 
         <Text style={styles.sectionTitle} accessibilityRole="header">
-          Intake workflow
+          {activeTab === 'All' ? 'Intake workflow' : `${activeTab} checklist`}
         </Text>
 
         <View style={styles.cardList}>
-          {WORKFLOW_STEPS.map((item) => (
-            <View key={item.step} style={styles.glassCard} accessible>
+          {TAB_CARDS[activeTab].map((item) => (
+            <View
+              key={`${activeTab}-${item.step}`}
+              style={styles.glassCard}
+              accessible
+              accessibilityLabel={`${item.step}. ${item.title} (${item.tag}): ${item.detail}`}
+            >
               <View style={styles.stepBadge}>
                 <Text style={styles.stepBadgeText}>{item.step}</Text>
               </View>

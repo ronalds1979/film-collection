@@ -87,6 +87,7 @@ export function AddMoviePage() {
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [appliedResultKey, setAppliedResultKey] = useState<string | null>(null);
 
   // ⚡ Bolt: Extract inline sort into useMemo to prevent unnecessary array allocations and O(N log N) sorting on every render
   const sortedSearchResults = useMemo(
@@ -499,6 +500,7 @@ export function AddMoviePage() {
     }
 
     setIsLookingUpMetadata(true);
+    setAppliedResultKey(null);
     setStatusMessage(barcode ? 'Looking up this barcode in the catalog and live product metadata...' : 'Searching live TMDb and IMDb-linked metadata...');
 
     try {
@@ -547,7 +549,7 @@ export function AddMoviePage() {
     }
   };
 
-  const applyMetadata = (result: SearchResult) => {
+  const applyMetadata = (result: SearchResult, resultKey?: string) => {
     const year = result.release_date || result.releaseDate || '';
     const parsedYear = year ? String(year).slice(0, 4) : '';
 
@@ -571,7 +573,17 @@ export function AddMoviePage() {
         : current.posterPath,
     }));
 
+    setAppliedResultKey(resultKey || null);
     setStatusMessage(`Metadata from ${result.source || 'source'} applied to the entry.`);
+  };
+
+  const handleIdentificationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (!isLookingUpMetadata && !isReadingBarcode) {
+        void handleLookupMetadata();
+      }
+    }
   };
 
   const resetIntake = () => {
@@ -582,6 +594,7 @@ export function AddMoviePage() {
     setCoverUploadStatus({});
     setBarcodeScanStatus(null);
     setSearchResults([]);
+    setAppliedResultKey(null);
     setStatusMessage(null);
   };
 
@@ -720,6 +733,7 @@ export function AddMoviePage() {
                   label="Movie title"
                   value={form.title}
                   onChange={(event) => updateForm('title', event.target.value)}
+                  onKeyDown={handleIdentificationKeyDown}
                   required
                   InputProps={{
                     endAdornment: form.title ? (
@@ -735,7 +749,7 @@ export function AddMoviePage() {
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} />
+                <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} onKeyDown={handleIdentificationKeyDown} />
               </Grid>
               <Grid item xs={12} md={5}>
                 <TextField
@@ -743,6 +757,7 @@ export function AddMoviePage() {
                   label="Barcode"
                   value={form.barcode}
                   onChange={(event) => updateForm('barcode', event.target.value)}
+                  onKeyDown={handleIdentificationKeyDown}
                   helperText={form.barcode ? (isBarcodeValid ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
                   InputProps={{
                     endAdornment: form.barcode ? (
@@ -811,24 +826,41 @@ export function AddMoviePage() {
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
-                {sortedSearchResults.map((result, index) => (
-                  <Paper key={`${result.title}-${index}`} sx={{ p: 2, borderRadius: 2, background: 'rgba(18,28,46,0.9)' }}>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
-                      <Box>
-                        <Typography fontWeight={700}>{result.title}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          {result.overview || 'No overview available.'}
-                        </Typography>
-                      </Box>
-                      <Button variant="outlined" onClick={() => applyMetadata(result)} sx={{ alignSelf: { md: 'center' }, flexShrink: 0 }}>
-                        Use metadata
-                      </Button>
-                    </Stack>
-                  </Paper>
-                ))}
+                {sortedSearchResults.map((result, index) => {
+                  const resultKey = `${result.source || 'meta'}-${result.id || result.imdb_id || result.title}-${index}`;
+                  const isApplied = appliedResultKey === resultKey;
+                  return (
+                    <Paper
+                      key={resultKey}
+                      sx={{
+                        p: 2,
+                        borderRadius: 2,
+                        background: 'rgba(18,28,46,0.9)',
+                        border: isApplied ? '1px solid #8ab4ff' : '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
+                        <Box>
+                          <Typography fontWeight={700}>{result.title}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                            {result.overview || 'No overview available.'}
+                          </Typography>
+                        </Box>
+                        <Button
+                          variant={isApplied ? 'contained' : 'outlined'}
+                          aria-pressed={isApplied}
+                          onClick={() => applyMetadata(result, resultKey)}
+                          sx={{ alignSelf: { md: 'center' }, flexShrink: 0 }}
+                        >
+                          {isApplied ? 'Applied ✓' : 'Use metadata'}
+                        </Button>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
               </Stack>
             )}
           </Paper>

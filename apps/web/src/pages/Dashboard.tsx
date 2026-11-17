@@ -11,19 +11,39 @@ import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Summary, Movie } from '../types';
 import { API_BASE } from '../utils/helpers';
 
-function StatCard({ title, value, subtitle, icon, to }: { title: string; value: number; subtitle: string; icon: React.ReactNode; to: string }) {
+function StatCard({ title, value, subtitle, icon, to, isLoading }: { title: string; value: number; subtitle: string; icon: React.ReactNode; to: string; isLoading?: boolean }) {
   return (
     <Grid item xs={6} sm={6} md={3}>
       <Paper
         component={RouterLink}
         to={to}
-        sx={{ p: { xs: 1.25, sm: 2.5 }, borderRadius: 3, color: 'inherit', textDecoration: 'none', background: 'rgba(18,28,46,0.9)', display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, minHeight: { xs: 92, sm: 112 }, cursor: 'pointer', '&:hover': { background: 'rgba(34,49,74,0.95)', transform: 'translateY(-2px)' }, transition: 'transform 150ms ease, background 150ms ease' }}
+        sx={{
+          p: { xs: 1.25, sm: 2.5 },
+          borderRadius: 3,
+          color: 'inherit',
+          textDecoration: 'none',
+          background: 'rgba(18,28,46,0.9)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: { xs: 1, sm: 2 },
+          minHeight: { xs: 92, sm: 112 },
+          cursor: 'pointer',
+          '&:hover': { background: 'rgba(34,49,74,0.95)', transform: 'translateY(-2px)' },
+          '&:focus-visible': { outline: '2px solid #8ab4ff', outlineOffset: 2 },
+          transition: 'transform 150ms ease, background 150ms ease',
+          '@media (prefers-reduced-motion: reduce)': {
+            transition: 'none',
+            '&:hover': { transform: 'none' },
+          },
+        }}
       >
         <Box sx={{ width: { xs: 34, sm: 48 }, height: { xs: 34, sm: 48 }, flexShrink: 0, borderRadius: 2, display: 'grid', placeItems: 'center', background: 'rgba(138,180,255,0.12)', color: '#8ab4ff' }}>
           {icon}
         </Box>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>{value}</Typography>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            {isLoading ? <Skeleton variant="text" width={36} sx={{ bgcolor: 'rgba(255,255,255,0.08)' }} /> : value}
+          </Typography>
           <Typography variant="body2" color="text.secondary">{title}</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{subtitle}</Typography>
         </Box>
@@ -94,10 +114,10 @@ export function DashboardPage() {
         {loadError && <Alert severity="error">{loadError}</Alert>}
 
         <Grid container spacing={2}>
-          <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" />
-          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<AlbumRounded />} to="/collection?view=editions" />
-          <StatCard title="Favorites" value={summary.favorites} subtitle="View favorite titles" icon={<FavoriteRounded />} to="/collection?view=favorites" />
-          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<VisibilityOffRounded />} to="/collection?view=unwatched" />
+          <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" isLoading={isLoading} />
+          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<AlbumRounded />} to="/collection?view=editions" isLoading={isLoading} />
+          <StatCard title="Favorites" value={summary.favorites} subtitle="View favorite titles" icon={<FavoriteRounded />} to="/collection?view=favorites" isLoading={isLoading} />
+          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<VisibilityOffRounded />} to="/collection?view=unwatched" isLoading={isLoading} />
         </Grid>
 
         <Grid container spacing={3}>
@@ -175,9 +195,14 @@ export function DashboardPage() {
                     </ListItemButton>
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No movies in your collection yet.
-                  </Typography>
+                  <Stack spacing={1.5} alignItems="flex-start">
+                    <Typography variant="body2" color="text.secondary">
+                      No movies in your collection yet.
+                    </Typography>
+                    <Button component={RouterLink} to="/add-movie" variant="outlined" size="small">
+                      Add your first movie
+                    </Button>
+                  </Stack>
                 )}
               </Stack>
             </Paper>

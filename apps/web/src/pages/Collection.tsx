@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useState, useMemo, useRef, useDeferredValue } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
@@ -10,13 +10,27 @@ import { Movie, Genre, Edition } from '../types';
 import { API_BASE, baseCollator } from '../utils/helpers';
 import { formatLabel, watchedOptions } from '../utils/constants';
 
-const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
+function getEmptyStateCopy(collectionView: string, hasActiveFilters?: boolean): { message: string; showAddCta: boolean } {
+  if (hasActiveFilters) {
+    return { message: 'No catalog entries match these filters.', showAddCta: false };
+  }
+  if (collectionView === 'favorites') {
+    return { message: 'You have no favorite movies yet. Mark a movie as Favorite when adding or editing an entry.', showAddCta: true };
+  }
+  if (collectionView === 'unwatched') {
+    return { message: 'You have no unwatched movies in your collection.', showAddCta: true };
+  }
+  return { message: 'Your film collection is empty. Start by cataloging your first physical edition.', showAddCta: true };
+}
+
+const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters, collectionView }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
   onSelect: (movie: Movie, edition?: Edition) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  collectionView?: string;
 }) {
   if (isLoading) {
     return (
@@ -32,12 +46,18 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
   }
 
   if (!rows.length) {
+    const emptyCopy = getEmptyStateCopy(collectionView || 'movies', hasActiveFilters);
     return (
       <Paper sx={{ display: { xs: 'block', md: 'none' }, p: 3, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
+        <Typography color="text.secondary" sx={{ mb: hasActiveFilters || emptyCopy.showAddCta ? 2 : 0 }}>{emptyCopy.message}</Typography>
         {hasActiveFilters && (
           <Button variant="outlined" size="small" onClick={onClearFilters}>
             Clear filters
+          </Button>
+        )}
+        {!hasActiveFilters && emptyCopy.showAddCta && (
+          <Button component={RouterLink} to="/add-movie" variant="contained" size="small" sx={{ mt: 2 }}>
+            Add movie
           </Button>
         )}
       </Paper>
@@ -547,6 +567,20 @@ export function CollectionPage() {
               </Stack>
             )}
           </Stack>
+          {!isLoading && !loadError && (
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1} sx={{ mt: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" role="status" aria-live="polite">
+                {collectionView === 'editions'
+                  ? `Showing ${displayedRows.length} edition${displayedRows.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching filters' : ''}`
+                  : `Showing ${filteredMovies.length} of ${movies.length} movie${movies.length === 1 ? '' : 's'}`}
+              </Typography>
+              {hasActiveFilters && (
+                <Button size="small" startIcon={<ClearRounded fontSize="small" />} onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </Stack>
+          )}
           {genreError && <Alert severity="error" sx={{ mt: 2 }}>{genreError}</Alert>}
         </Paper>
 
@@ -567,16 +601,24 @@ export function CollectionPage() {
                 onSelect={handleSelectMovie}
               />
             ))}
-            {!isLoading && !loadError && !carouselShelves.length && (
-              <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-                <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No movies match these filters.</Typography>
-                {hasActiveFilters && (
-                  <Button variant="outlined" size="small" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                )}
-              </Paper>
-            )}
+            {!isLoading && !loadError && !carouselShelves.length && (() => {
+              const emptyCopy = getEmptyStateCopy(collectionView, hasActiveFilters);
+              return (
+                <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
+                  <Typography color="text.secondary" sx={{ mb: hasActiveFilters || emptyCopy.showAddCta ? 2 : 0 }}>{emptyCopy.message}</Typography>
+                  {hasActiveFilters && (
+                    <Button variant="outlined" size="small" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                  {!hasActiveFilters && emptyCopy.showAddCta && (
+                    <Button component={RouterLink} to="/add-movie" variant="contained" size="small">
+                      Add movie
+                    </Button>
+                  )}
+                </Paper>
+              );
+            })()}
           </Stack>
         ) : (
         <>
@@ -587,6 +629,7 @@ export function CollectionPage() {
             onSelect={handleSelectRow}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearFilters}
+            collectionView={collectionView}
           />
           <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Table aria-label="Collection movies table">
@@ -623,18 +666,8 @@ export function CollectionPage() {
                 <TableRow
                   key={`${movie.id}-${edition?.id || 'movie'}`}
                   hover
-                  tabIndex={0}
                   onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
-                    }
-                  }}
-                  sx={{
-                    cursor: 'pointer',
-                    '&:focus-visible': { outline: '2px solid #8ab4ff', outlineOffset: -2 },
-                  }}
+                  sx={{ cursor: 'pointer' }}
                 >
                   <TableCell>
                     <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
@@ -654,6 +687,7 @@ export function CollectionPage() {
                     <Button
                       size="small"
                       startIcon={<EditRounded />}
+                      aria-label={`Edit ${movie.alternativeTitle || movie.title}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
@@ -664,18 +698,26 @@ export function CollectionPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!isLoading && !loadError && !displayedRows.length && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <Typography color="text.secondary" sx={{ mb: hasActiveFilters ? 2 : 0 }}>No catalog entries match these filters.</Typography>
-                    {hasActiveFilters && (
-                      <Button variant="outlined" size="small" onClick={clearFilters}>
-                        Clear filters
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )}
+              {!isLoading && !loadError && !displayedRows.length && (() => {
+                const emptyCopy = getEmptyStateCopy(collectionView, hasActiveFilters);
+                return (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      <Typography color="text.secondary" sx={{ mb: hasActiveFilters || emptyCopy.showAddCta ? 2 : 0 }}>{emptyCopy.message}</Typography>
+                      {hasActiveFilters && (
+                        <Button variant="outlined" size="small" onClick={clearFilters}>
+                          Clear filters
+                        </Button>
+                      )}
+                      {!hasActiveFilters && emptyCopy.showAddCta && (
+                        <Button component={RouterLink} to="/add-movie" variant="contained" size="small">
+                          Add movie
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })()}
             </TableBody>
           </Table>
           </TableContainer>
