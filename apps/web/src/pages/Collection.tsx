@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState, useMemo, useRef, useDeferredValue } from 'react';
-import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
@@ -23,10 +23,11 @@ function getEmptyStateCopy(collectionView: string, hasActiveFilters?: boolean): 
   return { message: 'Your film collection is empty. Start by cataloging your first physical edition.', showAddCta: true };
 }
 
-const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters, collectionView }: {
+const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onRetry, onSelect, hasActiveFilters, onClearFilters, collectionView }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
   loadError: string | null;
+  onRetry?: () => void;
   onSelect: (movie: Movie, edition?: Edition) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
@@ -42,7 +43,21 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
   }
 
   if (loadError) {
-    return <Alert severity="error" sx={{ display: { xs: 'flex', md: 'none' } }}>{loadError}</Alert>;
+    return (
+      <Alert
+        severity="error"
+        sx={{ display: { xs: 'flex', md: 'none' } }}
+        action={
+          onRetry ? (
+            <Button color="inherit" size="small" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : undefined
+        }
+      >
+        {loadError}
+      </Alert>
+    );
   }
 
   if (!rows.length) {
@@ -68,7 +83,11 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
     <Stack spacing={1.5} sx={{ display: { xs: 'flex', md: 'none' } }} aria-label="Collection movie list">
       {rows.map(({ movie, edition }) => (
         <Card key={`${movie.id}-${edition?.id || 'movie'}`} sx={{ overflow: 'hidden', background: 'rgba(18,28,46,0.96)' }}>
-          <CardActionArea onClick={() => onSelect(movie, edition)} sx={{ textAlign: 'left' }}>
+          <CardActionArea
+            onClick={() => onSelect(movie, edition)}
+            aria-label={`Edit details for ${movie.alternativeTitle || movie.title}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
+            sx={{ textAlign: 'left' }}
+          >
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
                 <Box sx={{ minWidth: 0 }}>
@@ -95,13 +114,14 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
                     : 'No physical edition'}
                 </Typography>
               </Stack>
+              <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5} sx={{ mt: 1.5, color: 'primary.main' }}>
+                <EditRounded fontSize="small" />
+                <Typography variant="button" sx={{ fontSize: '0.8125rem' }}>
+                  Edit details
+                </Typography>
+              </Stack>
             </CardContent>
           </CardActionArea>
-          <CardActions sx={{ justifyContent: 'flex-end', px: 1.5, pt: 0 }}>
-            <Button size="small" startIcon={<EditRounded />} onClick={() => onSelect(movie, edition)}>
-              Edit details
-            </Button>
-          </CardActions>
         </Card>
       ))}
     </Stack>
@@ -290,8 +310,10 @@ export function CollectionPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [genreError, setGenreError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [displayMode, setDisplayMode] = useState<'table' | 'carousel'>('table');
@@ -299,6 +321,28 @@ export function CollectionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const collectionView = searchParams.get('view') || 'movies';
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable = Boolean(
+        target
+        && (target.tagName === 'INPUT'
+          || target.tagName === 'TEXTAREA'
+          || target.tagName === 'SELECT'
+          || target.isContentEditable),
+      );
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (event.key === '/' && !isEditable && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     setVisibleCount(COLLECTION_PAGE_SIZE);
@@ -314,6 +358,9 @@ export function CollectionPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
+    setGenreError(null);
     const loadMovies = async () => {
       try {
         const response = await fetch(`${API_BASE}/movies?view=summary`);
@@ -367,7 +414,7 @@ export function CollectionPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   const filteredMovies = useMemo(() => {
     // ⚡ Bolt: Extract loop invariant (string normalization) outside the loop
@@ -494,10 +541,18 @@ export function CollectionPage() {
         <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
           <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center">
             <TextField
+              inputRef={searchInputRef}
               sx={{ flex: { xs: '1 1 100%', md: '1 1 280px' }, minWidth: 0 }}
               label="Search title, original title, or alternative title"
+              placeholder="Search titles... (/ or Ctrl+K)"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && searchTerm) {
+                  event.preventDefault();
+                  setSearchTerm('');
+                }
+              }}
               InputProps={{
                 startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
                 endAdornment: searchTerm ? (
@@ -592,7 +647,18 @@ export function CollectionPage() {
                 <Typography color="text.secondary">Loading your collection...</Typography>
               </Stack>
             )}
-            {loadError && <Alert severity="error">{loadError}</Alert>}
+            {loadError && (
+              <Alert
+                severity="error"
+                action={
+                  <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
+                    Retry
+                  </Button>
+                }
+              >
+                {loadError}
+              </Alert>
+            )}
             {!isLoading && !loadError && carouselShelves.map(({ genre, movies: shelfMovies }) => (
               <MovieCarouselRow
                 key={genre.id}
@@ -626,6 +692,7 @@ export function CollectionPage() {
             rows={visibleRows}
             isLoading={isLoading}
             loadError={loadError}
+            onRetry={() => setReloadToken((n) => n + 1)}
             onSelect={handleSelectRow}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearFilters}
@@ -658,7 +725,16 @@ export function CollectionPage() {
               {loadError && (
                 <TableRow>
                   <TableCell colSpan={7}>
-                    <Alert severity="error">{loadError}</Alert>
+                    <Alert
+                      severity="error"
+                      action={
+                        <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
+                          Retry
+                        </Button>
+                      }
+                    >
+                      {loadError}
+                    </Alert>
                   </TableCell>
                 </TableRow>
               )}
@@ -680,7 +756,7 @@ export function CollectionPage() {
                   <TableCell>{edition ? `${formatLabel(edition.formatId)} · ${edition.editionYear || 'Year n/a'}` : 'No edition'}</TableCell>
                   <TableCell>{edition?.barcode || '—'}</TableCell>
                   <TableCell>
-                    {movie.favorite ? 'Favorite' : movie.watchedStatus || 'unwatched'}
+                    {movie.favorite ? `Favorite · ${movie.watchedStatus || 'unwatched'}` : movie.watchedStatus || 'unwatched'}
                     {movie.watchedDate ? ` · ${movie.watchedDate}` : ''}
                   </TableCell>
                   <TableCell align="right">

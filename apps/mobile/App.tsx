@@ -77,11 +77,33 @@ const TAB_CARDS: Record<FilterTab, Array<{ step: string; title: string; detail: 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
+  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
 
   const filterSummary: Record<FilterTab, string> = {
     All: 'Showing complete catalog intake workflow and edition tools.',
     Unwatched: 'Focus on physical editions waiting on your watchlist.',
     Favorites: 'Quick access to your starred favorite physical editions.',
+  };
+
+  const activeCards = TAB_CARDS[activeTab];
+  const completedCount = activeCards.filter((item) => completedSteps[`${activeTab}-${item.step}`]).length;
+  const totalCount = activeCards.length;
+
+  const toggleStep = (stepKey: string) => {
+    setCompletedSteps((prev) => ({
+      ...prev,
+      [stepKey]: !prev[stepKey],
+    }));
+  };
+
+  const resetActiveTabSteps = () => {
+    setCompletedSteps((prev) => {
+      const next = { ...prev };
+      for (const item of activeCards) {
+        delete next[`${activeTab}-${item.step}`];
+      }
+      return next;
+    });
   };
 
   return (
@@ -120,35 +142,64 @@ export default function App() {
           })}
         </View>
 
-        <View style={styles.bannerCard}>
+        <View style={styles.bannerCard} accessibilityLiveRegion="polite">
           <Text style={styles.bannerTitle}>{activeTab} view</Text>
           <Text style={styles.bannerBody}>{filterSummary[activeTab]}</Text>
         </View>
 
-        <Text style={styles.sectionTitle} accessibilityRole="header">
-          {activeTab === 'All' ? 'Intake workflow' : `${activeTab} checklist`}
-        </Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            {activeTab === 'All' ? 'Intake workflow' : `${activeTab} checklist`}
+          </Text>
+          <View style={styles.progressGroup}>
+            <Text style={styles.progressText} accessibilityLiveRegion="polite">
+              {completedCount} of {totalCount} completed
+            </Text>
+            {completedCount > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Reset ${activeTab} checklist`}
+                onPress={resetActiveTabSteps}
+                style={({ pressed }) => [styles.resetButton, pressed && styles.pillPressed]}
+              >
+                <Text style={styles.resetButtonText}>Reset</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
 
         <View style={styles.cardList}>
-          {TAB_CARDS[activeTab].map((item) => (
-            <View
-              key={`${activeTab}-${item.step}`}
-              style={styles.glassCard}
-              accessible
-              accessibilityLabel={`${item.step}. ${item.title} (${item.tag}): ${item.detail}`}
-            >
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepBadgeText}>{item.step}</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
-                  <Text style={styles.tagText}>{item.tag}</Text>
+          {activeCards.map((item) => {
+            const stepKey = `${activeTab}-${item.step}`;
+            const checked = Boolean(completedSteps[stepKey]);
+            return (
+              <Pressable
+                key={stepKey}
+                onPress={() => toggleStep(stepKey)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked }}
+                accessibilityLabel={`${item.step}. ${item.title} (${item.tag}): ${item.detail}`}
+                style={({ pressed }) => [
+                  styles.glassCard,
+                  checked && styles.glassCardChecked,
+                  pressed && styles.pillPressed,
+                ]}
+              >
+                <View style={[styles.stepBadge, checked && styles.stepBadgeChecked]}>
+                  <Text style={[styles.stepBadgeText, checked && styles.stepBadgeTextChecked]}>
+                    {checked ? '✓' : item.step}
+                  </Text>
                 </View>
-                <Text style={styles.cardDetail}>{item.detail}</Text>
-              </View>
-            </View>
-          ))}
+                <View style={styles.cardContent}>
+                  <View style={styles.cardTitleRow}>
+                    <Text style={[styles.cardTitle, checked && styles.cardTitleChecked]}>{item.title}</Text>
+                    <Text style={styles.tagText}>{item.tag}</Text>
+                  </View>
+                  <Text style={styles.cardDetail}>{item.detail}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -228,11 +279,43 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: 'rgba(237, 244, 255, 0.82)',
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#edf4ff',
-    marginTop: 4,
+  },
+  progressGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8ab4ff',
+  },
+  resetButton: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(138, 180, 255, 0.35)',
+    backgroundColor: 'rgba(138, 180, 255, 0.12)',
+    justifyContent: 'center',
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8ab4ff',
   },
   cardList: {
     gap: 12,
@@ -247,6 +330,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
+  glassCardChecked: {
+    borderColor: 'rgba(102, 187, 106, 0.55)',
+    backgroundColor: 'rgba(22, 40, 56, 0.92)',
+  },
   stepBadge: {
     width: 32,
     height: 32,
@@ -255,10 +342,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stepBadgeChecked: {
+    backgroundColor: 'rgba(102, 187, 106, 0.22)',
+  },
   stepBadgeText: {
     color: '#8ab4ff',
     fontWeight: '800',
     fontSize: 15,
+  },
+  stepBadgeTextChecked: {
+    color: '#81c784',
   },
   cardContent: {
     flex: 1,
@@ -275,6 +368,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#edf4ff',
+  },
+  cardTitleChecked: {
+    color: 'rgba(237, 244, 255, 0.85)',
   },
   tagText: {
     fontSize: 11,

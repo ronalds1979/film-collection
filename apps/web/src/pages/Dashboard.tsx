@@ -57,6 +57,7 @@ export function DashboardPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   // ⚡ Bolt: /api/movies?limit=4 already returns the top 4 alphabetized movies from SQLite
   const topAlphabetizedMovies = movies;
 
@@ -97,7 +98,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, sm: 4 }, px: { xs: 1.5, sm: 3 } }}>
@@ -111,7 +112,18 @@ export function DashboardPage() {
           </Typography>
         </Box>
 
-        {loadError && <Alert severity="error">{loadError}</Alert>}
+        {loadError && (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
+                Retry
+              </Button>
+            }
+          >
+            {loadError}
+          </Alert>
+        )}
 
         <Grid container spacing={2}>
           <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" isLoading={isLoading} />

@@ -99,6 +99,9 @@ export function AddMoviePage() {
     () => new Map(genres.map((genre) => [genre.id, genre.name])),
     [genres],
   );
+  const step1Ready = Boolean(form.title.trim());
+  const step2Ready = Boolean(uploadedCovers.front && uploadedCovers.back);
+  const step3Ready = Boolean(form.genreIds.length && form.formatId);
 
   useEffect(() => {
     let cancelled = false;
@@ -722,7 +725,10 @@ export function AddMoviePage() {
 
         <Box component="form" onSubmit={handleSubmit}>
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>1. Identify the movie</Typography>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>1. Identify the movie</Typography>
+              {step1Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Scan the package barcode or search by title. Review a matching catalog/API result before adding photos.
             </Typography>
@@ -866,7 +872,10 @@ export function AddMoviePage() {
           </Paper>
 
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>2. Add cover photos</Typography>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>2. Add cover photos</Typography>
+              {step2Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               After identifying the movie, capture or choose its front and back cover. Photos are saved with the edition; no text is extracted from them.
             </Typography>
@@ -897,7 +906,10 @@ export function AddMoviePage() {
               />
             </Stack>
           </Paper>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>3. Confirm edition details and save</Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>3. Confirm edition details and save</Typography>
+            {step3Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
+          </Stack>
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <Typography variant="subtitle1" fontWeight={700}>Movie details</Typography>
@@ -1110,6 +1122,15 @@ export function AddMoviePage() {
                 value={form.watchedDate}
                 onChange={(event) => updateForm('watchedDate', event.target.value)}
               />
+              {!form.watchedDate && (
+                <Button
+                  size="small"
+                  onClick={() => updateForm('watchedDate', new Date().toISOString().slice(0, 10))}
+                  sx={{ mt: 0.5 }}
+                >
+                  Set to today
+                </Button>
+              )}
             </Grid>
           </Grid>
 

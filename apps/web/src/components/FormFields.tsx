@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
@@ -88,6 +88,7 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
   onRetry: () => void;
   onRotate: () => void;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
   const busy = uploading || rotating;
   return (
     <Box sx={{ minWidth: { xs: '100%', md: 220 }, flex: 1 }}>
@@ -96,7 +97,35 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
           component="label"
           variant="outlined"
           disabled={busy}
-          sx={{ width: '100%', py: 2.5, borderStyle: 'dashed', borderRadius: 3 }}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            if (!busy) setIsDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!busy) setIsDragging(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            if (busy) return;
+            const file = event.dataTransfer.files?.[0] || null;
+            if (file && file.type.startsWith('image/')) {
+              onChange(file);
+            }
+          }}
+          sx={{
+            width: '100%',
+            py: 2.5,
+            borderStyle: 'dashed',
+            borderRadius: 3,
+            borderColor: isDragging ? '#8ab4ff' : undefined,
+            backgroundColor: isDragging ? 'rgba(138,180,255,0.12)' : undefined,
+          }}
           startIcon={busy ? <CircularProgress size={18} /> : <PhotoCamera />}
         >
           {uploading ? `Preparing ${label.toLowerCase()}...` : rotating ? `Rotating ${label.toLowerCase()}...` : `Capture ${label.toLowerCase()}`}
@@ -141,7 +170,7 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
         </Typography>
       )}
       <Typography variant="caption" color={uploaded ? 'success.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.75, textAlign: 'center' }}>
-        {uploading ? 'Preparing and saving the photo...' : uploaded ? 'Saved on the catalog server · ready to include' : 'Capture or choose a photo to include with this edition'}
+        {uploading ? 'Preparing and saving the photo...' : uploaded ? 'Saved on the catalog server · ready to include' : 'Capture, choose, or drag & drop a photo to include with this edition'}
       </Typography>
       {uploadStatus && (
         <Alert severity={uploadStatus.severity} sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}>
