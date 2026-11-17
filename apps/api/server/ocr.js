@@ -13,6 +13,8 @@ const {
 
 let workerPromise;
 let ocrQueue = Promise.resolve();
+const MAX_OCR_QUEUE_DEPTH = 5;
+let pendingOcrCount = 0;
 
 const getWorker = () => {
   // ⚡ Bolt: Load only 'eng' traineddata and restrict character whitelist to digits for barcode OCR
@@ -29,9 +31,17 @@ const getWorker = () => {
 };
 
 const runSerializedOcr = (imageBuffer) => {
+  if (pendingOcrCount >= MAX_OCR_QUEUE_DEPTH) {
+    const error = new Error('Barcode OCR queue is busy. Please try again shortly.');
+    error.status = 429;
+    return Promise.reject(error);
+  }
+  pendingOcrCount += 1;
   const job = ocrQueue.then(async () => {
     const worker = await getWorker();
     return worker.recognize(imageBuffer);
+  }).finally(() => {
+    pendingOcrCount = Math.max(0, pendingOcrCount - 1);
   });
   // Keep the queue alive even if a single recognition rejects
   ocrQueue = job.catch(() => undefined);

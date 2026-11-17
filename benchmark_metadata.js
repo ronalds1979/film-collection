@@ -1,4 +1,4 @@
-import { lookupMetadata } from './server/services/metadata.js';
+import { lookupMetadata } from './apps/api/server/services/metadata.js';
 import { performance } from 'perf_hooks';
 
 const runBenchmark = async () => {

@@ -112,7 +112,7 @@ export const lookupMetadata = async (rawQuery) => {
             release_date: item.Year || null,
             releaseDate: item.Year || null,
             overview: item.Plot || item.Type || '',
-            poster_path: item.Poster || null,
+            poster_path: item.Poster && item.Poster !== 'N/A' ? item.Poster : null,
             imdb_id: item.imdbID || null,
             source: 'imdb',
           });

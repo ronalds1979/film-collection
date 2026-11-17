@@ -1,6 +1,16 @@
 node_modules/
 dist/
 uploads/
+apps/web/public/uploads/
 film_catalog.db
 prisma/film_catalog.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 .env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+apps/api/*.traineddata

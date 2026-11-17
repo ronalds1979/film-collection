@@ -111,10 +111,24 @@ const verifyUploadedCoversExist = async (payload, fields) => {
 };
 
 const cleanupReplacedCoverFiles = async (previousPaths) => {
+  const uniquePaths = [...new Set(previousPaths.filter(Boolean))];
   const tasks = [];
-  for (const oldPath of previousPaths) {
+  for (const oldPath of uniquePaths) {
     const resolved = resolveUploadFilePath(oldPath);
     if (!resolved) continue;
+    const [editionRefs, movieRefs] = await Promise.all([
+      prisma.edition.count({
+        where: {
+          OR: [
+            { frontCoverPath: oldPath },
+            { backCoverPath: oldPath },
+            { spineImagePath: oldPath },
+          ],
+        },
+      }),
+      prisma.movie.count({ where: { posterPath: oldPath } }),
+    ]);
+    if (editionRefs > 0 || movieRefs > 0) continue;
     tasks.push(
       fs.promises.unlink(resolved).catch((error) => {
         if (error?.code !== 'ENOENT') {
@@ -125,6 +139,60 @@ const cleanupReplacedCoverFiles = async (previousPaths) => {
   }
   if (tasks.length) {
     await Promise.all(tasks);
+  }
+};
+
+const cleanupOrphanedUploads = async (maxAgeMs = 24 * 60 * 60 * 1000) => {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(uploadsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.error('Failed to scan uploads directory for orphans', error instanceof Error ? error.name : 'Unknown error');
+    }
+    return;
+  }
+
+  const cutoffMs = Date.now() - maxAgeMs;
+  const staleFiles = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.jpg')) continue;
+    const fullPath = path.join(uploadsDir, entry.name);
+    try {
+      const stat = await fs.promises.stat(fullPath);
+      if (stat.mtimeMs < cutoffMs) {
+        staleFiles.push({ fullPath, uploadPath: `/uploads/${entry.name}` });
+      }
+    } catch {
+      // Ignore transient stat errors
+    }
+  }
+  if (!staleFiles.length) return;
+
+  const [editions, movies] = await Promise.all([
+    prisma.edition.findMany({
+      select: { frontCoverPath: true, backCoverPath: true, spineImagePath: true },
+    }),
+    prisma.movie.findMany({
+      where: { posterPath: { startsWith: '/uploads/' } },
+      select: { posterPath: true },
+    }),
+  ]);
+
+  const referencedPaths = new Set();
+  for (const edition of editions) {
+    if (edition.frontCoverPath) referencedPaths.add(edition.frontCoverPath);
+    if (edition.backCoverPath) referencedPaths.add(edition.backCoverPath);
+    if (edition.spineImagePath) referencedPaths.add(edition.spineImagePath);
+  }
+  for (const movie of movies) {
+    if (movie.posterPath) referencedPaths.add(movie.posterPath);
+  }
+
+  for (const file of staleFiles) {
+    if (!referencedPaths.has(file.uploadPath)) {
+      await fs.promises.unlink(file.fullPath).catch(() => {});
+    }
   }
 };
 
@@ -198,8 +266,17 @@ const createRateLimiter = ({ windowMs = RATE_LIMIT_WINDOW_MS, maxRequests = RATE
           if (now >= trackedEntry.resetAt) hits.delete(trackedKey);
         }
         if (hits.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
-          const oldestKey = hits.keys().next().value;
-          if (oldestKey !== undefined) hits.delete(oldestKey);
+          let evictionKey;
+          for (const [trackedKey, trackedEntry] of hits) {
+            if (trackedEntry.count <= maxRequests) {
+              evictionKey = trackedKey;
+              break;
+            }
+          }
+          if (evictionKey === undefined) {
+            evictionKey = hits.keys().next().value;
+          }
+          if (evictionKey !== undefined) hits.delete(evictionKey);
         }
       }
       hits.set(key, { count: 1, resetAt: now + windowMs });
@@ -235,10 +312,8 @@ const isTimingSafeEqual = (a, b) => {
   return crypto.timingSafeEqual(aBuf, bBuf);
 };
 
-app.use('/api', globalApiLimiter);
-
-app.use('/api', (req, res, next) => {
-  if (!apiAuthToken || req.path === '/health') {
+const requireAuthIfConfigured = (req, res, next) => {
+  if (!apiAuthToken || (req.baseUrl === '/api' && req.path === '/health')) {
     next();
     return;
   }
@@ -250,7 +325,11 @@ app.use('/api', (req, res, next) => {
     return;
   }
   next();
-});
+};
+
+app.use('/api', globalApiLimiter);
+
+app.use('/api', requireAuthIfConfigured);
 
 app.use('/api', (req, res, next) => {
   if (!MUTATING_METHODS.has(req.method)) {
@@ -313,7 +392,7 @@ app.use((req, res, next) => {
   next();
 });
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
-app.use('/uploads', express.static(uploadsDir, { maxAge: '30d', immutable: true }));
+app.use('/uploads', requireAuthIfConfigured, express.static(uploadsDir, { maxAge: '30d', immutable: true }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
@@ -399,9 +478,14 @@ app.get('/api/movies', async (req, res, next) => {
               editions: {
                 select: {
                   id: true,
-                  mediaType: true,
-                  editionType: true,
+                  editionYear: true,
                   frontCoverPath: true,
+                  formatId: true,
+                  editionTypeId: true,
+                  steelbook: true,
+                  slipcover: true,
+                  digibook: true,
+                  barcode: true,
                 },
               },
               genres: {
@@ -552,6 +636,13 @@ app.post('/api/barcode/read', heavyEndpointLimiter, barcodeUpload.single('image'
       validated: isValidRetailBarcode(scan.barcode),
     });
   } catch (error) {
+    if (error?.status === 429) {
+      res.status(429).json({
+        success: false,
+        message: 'Barcode OCR queue is busy. Please try again shortly.',
+      });
+      return;
+    }
     const requestId = crypto.randomUUID();
     const diagnostic = error instanceof Error
       ? { name: error.name, code: error.code || null, message: error.message }
@@ -990,13 +1081,14 @@ async function start() {
 
   await prisma.$connect();
   await seedGenres();
+  cleanupOrphanedUploads().catch(() => {});
 
   app.listen(port, host, () => {
     console.log(`Film collection API listening on http://${host}:${port}`);
   });
 }
 
-export { app };
+export { app, prisma, start };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   start().catch((error) => {

@@ -501,10 +501,12 @@ export function AddMoviePage() {
       tmdbId: result.tmdbId || (result.id ? String(result.id) : current.tmdbId),
       imdbUrl: result.imdb_id ? `https://www.imdb.com/title/${result.imdb_id}/` : current.imdbUrl,
       tmdbUrl: result.tmdbUrl || (result.id ? `https://www.themoviedb.org/movie/${result.id}` : current.tmdbUrl),
-      posterPath: result.poster_path
+      posterPath: result.poster_path && result.poster_path !== 'N/A'
         ? result.poster_path.startsWith('http')
           ? result.poster_path
-          : `https://image.tmdb.org/t/p/w500${result.poster_path}`
+          : result.poster_path.startsWith('/')
+            ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
+            : current.posterPath
         : current.posterPath,
     }));
 

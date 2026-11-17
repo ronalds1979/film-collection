@@ -63,42 +63,45 @@ export const getMovies = async (req, res, next) => {
       return;
     }
 
-    if (req.query?.view === 'summary') {
-      // ⚡ Bolt: Project only summary fields for collection views, omitting heavy synopsis/notes/URL columns
-      const movies = await prisma.movie.findMany({
-        select: {
-          id: true,
-          title: true,
-          originalTitle: true,
-          alternativeTitle: true,
-          releaseYear: true,
-          watchedStatus: true,
-          favorite: true,
-          posterPath: true,
-          genres: { select: { id: true, name: true } },
-          editions: {
-            select: {
-              id: true,
-              editionYear: true,
-              frontCoverPath: true,
-              formatId: true,
-              editionTypeId: true,
-              steelbook: true,
-              slipcover: true,
-              digibook: true,
-              barcode: true,
-            },
-          },
-        },
-        orderBy: { title: 'asc' },
-      });
-      res.json(movies);
-      return;
-    }
+    const rawOffset = req.query?.offset;
+    const offset = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+    const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
+    const isSummary = req.query?.view === 'summary';
 
     const movies = await prisma.movie.findMany({
-      include: { editions: true, genres: true },
+      ...(isSummary
+        ? {
+            select: {
+              id: true,
+              title: true,
+              originalTitle: true,
+              alternativeTitle: true,
+              releaseYear: true,
+              watchedStatus: true,
+              favorite: true,
+              posterPath: true,
+              genres: { select: { id: true, name: true } },
+              editions: {
+                select: {
+                  id: true,
+                  editionYear: true,
+                  frontCoverPath: true,
+                  formatId: true,
+                  editionTypeId: true,
+                  steelbook: true,
+                  slipcover: true,
+                  digibook: true,
+                  barcode: true,
+                },
+              },
+            },
+          }
+        : {
+            include: { editions: true, genres: true },
+          }),
       orderBy: { title: 'asc' },
+      ...(take !== undefined ? { take } : {}),
+      ...(offset !== undefined ? { skip: offset } : {}),
     });
     res.json(movies);
   } catch (error) {
@@ -106,11 +109,19 @@ export const getMovies = async (req, res, next) => {
   }
 };
 
-export const getEditions = async (_req, res, next) => {
+export const getEditions = async (req, res, next) => {
   try {
+    const rawLimit = req.query?.limit;
+    const rawOffset = req.query?.offset;
+    const limit = rawLimit !== undefined ? Number(rawLimit) : null;
+    const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
+    const skip = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+
     const editions = await prisma.edition.findMany({
       include: { movie: true },
       orderBy: [{ movie: { title: 'asc' } }, { editionYear: 'asc' }, { id: 'asc' }],
+      ...(take !== undefined ? { take } : {}),
+      ...(skip !== undefined ? { skip } : {}),
     });
     res.json(editions);
   } catch (error) {
@@ -378,25 +389,30 @@ export const getBarcodeMetadata = async (req, res, next) => {
         source: 'catalog',
       }));
 
-      const liveLookups = await Promise.all(catalogMovies.map((movie) => lookupMetadata(movie.title)));
-      const liveResults = liveLookups
-        .filter((lookup) => lookup.status === 200)
-        .flatMap((lookup) => lookup.payload.results);
-      // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
-      const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
-      const results = [
-        ...catalogResults,
-        ...liveResults.filter((live) => (
-          !(live.id && catalogIds.has(live.id))
-          && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
-        )),
-      ];
+      let results = catalogResults;
+      let hasLiveResults = false;
+      if (req.query?.includeLive === 'true') {
+        const liveLookups = await Promise.all(catalogMovies.map((movie) => lookupMetadata(movie.title)));
+        const liveResults = liveLookups
+          .filter((lookup) => lookup.status === 200)
+          .flatMap((lookup) => lookup.payload.results);
+        hasLiveResults = liveResults.length > 0;
+        // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
+        const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
+        results = [
+          ...catalogResults,
+          ...liveResults.filter((live) => (
+            !(live.id && catalogIds.has(live.id))
+            && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
+          )),
+        ];
+      }
 
       return res.json({
         success: true,
         barcode,
-        source: liveResults.length ? 'catalog+live-metadata' : 'catalog',
-        message: `Barcode matched ${catalogMovies.length} catalog title${catalogMovies.length === 1 ? '' : 's'}${liveResults.length ? ' and live metadata was added' : ''}.`,
+        source: hasLiveResults ? 'catalog+live-metadata' : 'catalog',
+        message: `Barcode matched ${catalogMovies.length} catalog title${catalogMovies.length === 1 ? '' : 's'}${hasLiveResults ? ' and live metadata was added' : ''}.`,
         results,
       });
     }
