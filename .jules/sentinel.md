@@ -35,3 +35,11 @@
 - Fixed broken Prisma `select` projection (`mediaType`/`editionType` -> `formatId`/`editionTypeId`) in `GET /api/movies?view=summary` resolving the HTTP 500 DoS on Collection load.
 - Enforced `requireAuthIfConfigured` on `/uploads` as well as `/api`, checked Prisma reference counts in `cleanupReplacedCoverFiles` before unlinking cover files, and added `cleanupOrphanedUploads()` on server startup.
 - Bounded OCR fallback queue depth (`MAX_OCR_QUEUE_DEPTH = 5`) in `apps/api/server/ocr.js` returning HTTP 429 on overload, improved rate-limiter eviction to prefer non-throttled keys, sanitized OMDb `"N/A"` poster values, aligned `movieController.js` pagination and `includeLive` gating, removed unused `axios`, and expanded `.gitignore` for SQLite WAL/SHM and `.env.*` files.
+
+## 2026-11-17 - Follow-up Audit Hardening
+**Vulnerabilities Remediated:**
+- Restricted `imageFileFilter` in `apps/api/server/index.js` to an explicit raster MIME allowlist and verified Sharp metadata (`ALLOWED_SHARP_FORMATS`) in `/api/upload-cover` and `ocr.js` to block SVG/XML uploads.
+- Hardened `isSafeHttpUrl` / added `isSafeHttpsUrl` in `apps/api/server/schemas/movie.js` to reject embedded credentials, loopback, link-local, and RFC1918 private network addresses; validated OMDb and UPCItemDB poster URLs with `isSafeHttpsUrl`.
+- Bounded TMDb, OMDb, and UPCItemDB `fetch()` responses with `redirect: 'error'` and streamed size limits (`readBoundedJson`, 2 MB max).
+- Centralized `prisma`, `seedGenres`, and cover verification/cleanup helpers in `apps/api/server/services/db.js`, aligned `movieController.js` and `routes/api.js` (including `getMovieById`, `verifyUploadedCoversExist`, and `cleanupReplacedCoverFiles`), and preserved/supported `durationMinutes`, `personalRating`, `rewatchFlag`, `purchaseDate`, and `spineImagePath` in `PUT /api/movies/:id`.
+- Set `Cache-Control: private` on `/uploads` when `API_AUTH_TOKEN` is configured and updated `apps/web/public/sw.js` and `public/sw.js` to avoid caching `private`/`no-store` responses; replaced stale root `src/` duplicates with thin re-exports pointing to `apps/web/src/`.

@@ -48,7 +48,21 @@ const runSerializedOcr = (imageBuffer) => {
   return job;
 };
 
+export const ALLOWED_SHARP_FORMATS = new Set([
+  'jpeg',
+  'png',
+  'webp',
+  'avif',
+  'gif',
+  'tiff',
+  'heif',
+]);
+
 export const preprocessBarcodeImage = async (imagePath) => {
+  const meta = await sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 }).metadata();
+  if (!meta.format || !ALLOWED_SHARP_FORMATS.has(meta.format)) {
+    throw new Error('Unsupported image format for barcode preprocessing.');
+  }
   const image = sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 })
     .rotate()
     .resize({
@@ -190,6 +204,10 @@ export const detectBarcode = async (imagePath) => {
 };
 
 export const recognizeBarcode = async (imagePath) => {
+  const meta = await sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 }).metadata();
+  if (!meta.format || !ALLOWED_SHARP_FORMATS.has(meta.format)) {
+    throw new Error('Unsupported image format for barcode scan.');
+  }
   // ⚡ Bolt: Decode image once and reuse raw grayscale buffer for OCR fallback if ZXing fails
   const { data: rawData, info } = await sharp(imagePath, { failOn: 'error', limitInputPixels: 25_000_000 })
     .rotate()

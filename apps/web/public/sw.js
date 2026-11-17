@@ -33,7 +33,8 @@ self.addEventListener('fetch', (event) => {
         const cached = await cache.match(event.request);
         if (cached) return cached;
         const response = await fetch(event.request);
-        if (response.ok) {
+        const cacheControl = (response.headers.get('cache-control') || '').toLowerCase();
+        if (response.ok && !cacheControl.includes('private') && !cacheControl.includes('no-store')) {
           void putBounded(cache, event.request, response.clone());
         }
         return response;

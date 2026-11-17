@@ -17,10 +17,57 @@ const coverPathSchema = z
   .optional()
   .nullable();
 
-const isSafeHttpUrl = (value) => {
+const isPrivateOrLoopbackHost = (rawHostname) => {
+  const host = String(rawHostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '::') {
+    return true;
+  }
+  if (host.startsWith('::ffff:') || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+    return true;
+  }
+  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const octets = ipv4Match.slice(1).map(Number);
+    if (octets.some((octet) => octet > 255)) {
+      return true;
+    }
+    const [a, b] = octets;
+    if (
+      a === 0
+      || a === 10
+      || a === 127
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const isSafeHttpUrl = (value) => {
   try {
     const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    if (parsed.username || parsed.password) {
+      return false;
+    }
+    return !isPrivateOrLoopbackHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
+export const isSafeHttpsUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      return false;
+    }
+    return !isPrivateOrLoopbackHost(parsed.hostname);
   } catch {
     return false;
   }

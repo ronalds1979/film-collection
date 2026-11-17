@@ -1,7 +1,49 @@
+import { isSafeHttpsUrl } from '../schemas/movie.js';
+
+export const MAX_METADATA_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_CACHE_SIZE = 200;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const metadataCache = new Map();
 const inFlightLookups = new Map();
+
+export const readBoundedJson = async (response, maxBytes = MAX_METADATA_RESPONSE_BYTES) => {
+  const contentLength = response.headers?.get?.('content-length');
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) {
+    throw new Error('External API response exceeded maximum allowed size.');
+  }
+
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalBytes += value.byteLength;
+          if (totalBytes > maxBytes) {
+            await reader.cancel().catch(() => {});
+            throw new Error('External API response exceeded maximum allowed size.');
+          }
+          chunks.push(value);
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const buffer = Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)),
+    );
+    return JSON.parse(buffer.toString('utf8'));
+  }
+
+  const text = await response.text();
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+    throw new Error('External API response exceeded maximum allowed size.');
+  }
+  return JSON.parse(text);
+};
 
 export const clearMetadataCache = () => {
   metadataCache.clear();
@@ -70,12 +112,16 @@ export const lookupMetadata = async (rawQuery) => {
         tmdbUrl.searchParams.set('api_key', tmdbApiKey);
       }
 
-      const response = await fetch(tmdbUrl, { headers, signal: AbortSignal.timeout(8000) });
+      const response = await fetch(tmdbUrl, {
+        headers,
+        redirect: 'error',
+        signal: AbortSignal.timeout(8000),
+      });
       if (!response.ok) {
         throw new Error(`TMDb returned HTTP ${response.status}.`);
       }
 
-      const data = await response.json();
+      const data = await readBoundedJson(response);
       const items = [];
       if (Array.isArray(data.results)) {
         for (const item of data.results) {
@@ -96,13 +142,14 @@ export const lookupMetadata = async (rawQuery) => {
       omdbUrl.searchParams.set('apikey', omdbApiKey);
       omdbUrl.searchParams.set('s', query);
       const response = await fetch(omdbUrl, {
+        redirect: 'error',
         signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) {
         throw new Error(`OMDb returned HTTP ${response.status}.`);
       }
 
-      const data = await response.json();
+      const data = await readBoundedJson(response);
       const items = [];
       if (Array.isArray(data.Search)) {
         for (const item of data.Search) {
@@ -112,7 +159,7 @@ export const lookupMetadata = async (rawQuery) => {
             release_date: item.Year || null,
             releaseDate: item.Year || null,
             overview: item.Plot || item.Type || '',
-            poster_path: item.Poster && item.Poster !== 'N/A' ? item.Poster : null,
+            poster_path: item.Poster && item.Poster !== 'N/A' && isSafeHttpsUrl(item.Poster) ? item.Poster : null,
             imdb_id: item.imdbID || null,
             source: 'imdb',
           });

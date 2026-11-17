@@ -7,6 +7,7 @@ router.get('/health', movieController.getHealth);
 router.get('/summary', movieController.getSummary);
 router.get('/genres', movieController.getGenres);
 router.get('/movies', movieController.getMovies);
+router.get('/movies/:id', movieController.getMovieById);
 router.get('/editions', movieController.getEditions);
 router.get('/export', movieController.exportCatalog);
 

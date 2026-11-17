@@ -1,11 +1,49 @@
-self.addEventListener('install', (event) => {
+const IMMUTABLE_CACHE = 'film-collection-immutable-v1';
+const MAX_IMMUTABLE_ENTRIES = 250;
+
+const putBounded = async (cache, request, response) => {
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  if (keys.length > MAX_IMMUTABLE_ENTRIES) {
+    const excess = keys.length - MAX_IMMUTABLE_ENTRIES;
+    await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+  }
+};
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== IMMUTABLE_CACHE).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((response) => response || Response.error())));
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  // ⚡ Bolt: Cache-first for content-hashed Vite assets and public immutable uploaded cover images
+  if (url.origin === self.location.origin && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/uploads/'))) {
+    event.respondWith(
+      caches.open(IMMUTABLE_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        const cacheControl = (response.headers.get('cache-control') || '').toLowerCase();
+        if (response.ok && !cacheControl.includes('private') && !cacheControl.includes('no-store')) {
+          void putBounded(cache, event.request, response.clone());
+        }
+        return response;
+      }),
+    );
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request).then((response) => response || Response.error())),
+  );
 });
