@@ -5,10 +5,39 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
-import { Movie, Genre, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
+import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
 import { formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
+
+function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info' {
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('could not')
+    || lower.includes('unable')
+    || lower.includes('failed')
+    || lower.includes('no metadata')
+    || lower.includes('no live metadata')
+    || lower.includes('wait for')
+    || lower.includes('add and save both')
+    || lower.includes('before looking up')
+  ) {
+    return 'error';
+  }
+  if (
+    lower.includes('saved')
+    || lower.includes('applied')
+    || lower.includes('captured')
+    || lower.includes('found')
+  ) {
+    return 'success';
+  }
+  return 'info';
+}
+
+function editionFormatLabel(formatId?: string | null) {
+  return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Edition';
+}
 
 export function AddMoviePage() {
   const { movieId } = useParams();
@@ -52,6 +81,7 @@ export function AddMoviePage() {
   const [isLoadingMovie, setIsLoadingMovie] = useState(isEditing);
   const [isSaving, setIsSaving] = useState(false);
   const [editingEditionId, setEditingEditionId] = useState<number | null>(null);
+  const [movieEditions, setMovieEditions] = useState<Edition[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genreError, setGenreError] = useState<string | null>(null);
@@ -101,6 +131,7 @@ export function AddMoviePage() {
         setFrontCover(null);
         setBackCover(null);
         setEditingEditionId(null);
+        setMovieEditions([]);
         setStatusMessage(null);
       }
       wasEditingRef.current = false;
@@ -127,6 +158,7 @@ export function AddMoviePage() {
         if (cancelled) return;
 
         setEditingEditionId(edition.id);
+        setMovieEditions(movie.editions || []);
         setForm({
           ...emptyMovieForm,
           title: movie.title || '',
@@ -611,6 +643,35 @@ export function AddMoviePage() {
             : 'Identify the movie with its barcode or title, review live metadata, then add its cover photos and edition details before saving.'}
         </Alert>
 
+        {isEditing && movieEditions.length > 1 && (
+          <Paper sx={{ p: 2, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+              Editions for this movie ({movieEditions.length})
+            </Typography>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              {movieEditions.map((ed) => {
+                const isCurrent = ed.id === editingEditionId;
+                const label = `${editionFormatLabel(ed.formatId)}${ed.editionYear ? ` · ${ed.editionYear}` : ''}${ed.barcode ? ` · ${ed.barcode}` : ''}`;
+                return (
+                  <Chip
+                    key={ed.id}
+                    label={label}
+                    clickable={!isCurrent}
+                    color={isCurrent ? 'primary' : 'default'}
+                    variant={isCurrent ? 'filled' : 'outlined'}
+                    aria-current={isCurrent ? 'true' : undefined}
+                    onClick={() => {
+                      if (!isCurrent) {
+                        navigate(`/edit-movie/${movieId}?editionId=${ed.id}`);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+          </Paper>
+        )}
+
         <Box component="form" onSubmit={handleSubmit}>
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>1. Identify the movie</Typography>
@@ -708,7 +769,7 @@ export function AddMoviePage() {
               </Alert>
             )}
             {statusMessage && (
-              <Alert severity={statusMessage.includes('could not') || statusMessage.includes('Could not') || statusMessage.includes('Unable') || statusMessage.includes('failed') || statusMessage.includes('Failed') || statusMessage.includes('No metadata') ? 'error' : 'info'} sx={{ mt: 2 }}>
+              <Alert role="status" aria-live="polite" severity={getStatusSeverity(statusMessage)} sx={{ mt: 2 }}>
                 {statusMessage}
               </Alert>
             )}
@@ -918,6 +979,31 @@ export function AddMoviePage() {
               <TextField fullWidth label="Estimated value" type="number" value={form.estimatedValue} onChange={(event) => updateForm('estimatedValue', event.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />
             </Grid>
             <Grid item xs={12}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                Packaging &amp; inclusions
+              </Typography>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {([
+                  ['steelbook', 'Steelbook'],
+                  ['slipcover', 'Slipcover'],
+                  ['digibook', 'Digibook'],
+                  ['booklet', 'Booklet'],
+                  ['posterIncluded', 'Poster included'],
+                ] as const).map(([field, label]) => (
+                  <FormControlLabel
+                    key={field}
+                    control={
+                      <Checkbox
+                        checked={Boolean(form[field])}
+                        onChange={(event) => updateForm(field, event.target.checked)}
+                      />
+                    }
+                    label={label}
+                  />
+                ))}
+              </Stack>
+            </Grid>
+            <Grid item xs={12}>
               <Accordion sx={{ width: '100%', background: 'rgba(11,19,33,0.75)' }}>
                 <AccordionSummary expandIcon={<ExpandMoreRounded />}>
                   <Box>
@@ -956,6 +1042,12 @@ export function AddMoviePage() {
               />
             </Grid>
           </Grid>
+
+          {statusMessage && (
+            <Alert role="status" aria-live="polite" severity={getStatusSeverity(statusMessage)} sx={{ mt: 3 }}>
+              {statusMessage}
+            </Alert>
+          )}
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 4 }}>
             <Button type="submit" variant="contained" size="large" disabled={isSaving || !genres.length || Boolean(genreError) || (isEditing && !editingEditionId) || uploadingCovers.front || uploadingCovers.back || rotatingCovers.front || rotatingCovers.back} startIcon={isSaving ? <CircularProgress size={18} /> : undefined}>

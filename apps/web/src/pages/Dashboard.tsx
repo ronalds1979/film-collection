@@ -2,9 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItemButton, ListItemText, MenuItem, Paper, Select, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
-import LibraryAddRoundedIcon from '@mui/icons-material/LibraryAddRounded';
-import PhotoCamera from '@mui/icons-material/PhotoCamera';
-import SearchIcon from '@mui/icons-material/Search';
+import AlbumRounded from '@mui/icons-material/AlbumRounded';
+import FavoriteRounded from '@mui/icons-material/FavoriteRounded';
+import VisibilityOffRounded from '@mui/icons-material/VisibilityOffRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
@@ -100,9 +100,9 @@ export function DashboardPage() {
 
         <Grid container spacing={2}>
           <StatCard title="Movies" value={summary.totalMovies} subtitle="View all catalog titles" icon={<DashboardRoundedIcon />} to="/collection?view=movies" />
-          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<LibraryAddRoundedIcon />} to="/collection?view=editions" />
-          <StatCard title="Favorites" value={summary.favorites} subtitle="View favorite titles" icon={<PhotoCamera />} to="/collection?view=favorites" />
-          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<SearchIcon />} to="/collection?view=unwatched" />
+          <StatCard title="Editions" value={summary.totalEditions} subtitle="View all physical editions" icon={<AlbumRounded />} to="/collection?view=editions" />
+          <StatCard title="Favorites" value={summary.favorites} subtitle="View favorite titles" icon={<FavoriteRounded />} to="/collection?view=favorites" />
+          <StatCard title="Unwatched" value={summary.unwatched} subtitle="View titles to watch" icon={<VisibilityOffRounded />} to="/collection?view=unwatched" />
         </Grid>
 
         <Grid container spacing={3}>
@@ -140,22 +140,44 @@ export function DashboardPage() {
 
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-                Movies A-Z
-              </Typography>
-              <Stack spacing={2}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Movies A-Z
+                </Typography>
+                <Button component={RouterLink} to="/collection" size="small">
+                  View all
+                </Button>
+              </Stack>
+              <Stack spacing={1.5}>
                 {isLoading ? (
                   [0, 1, 2, 3].map((idx) => (
                     <Skeleton key={idx} variant="rounded" height={64} sx={{ bgcolor: 'rgba(255,255,255,0.06)' }} />
                   ))
                 ) : topAlphabetizedMovies.length ? (
                   topAlphabetizedMovies.map((movie) => (
-                    <Box key={movie.id} sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, p: 1.8 }}>
-                      <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
-                      </Typography>
-                    </Box>
+                    <ListItemButton
+                      key={movie.id}
+                      component={RouterLink}
+                      to={`/edit-movie/${movie.id}`}
+                      sx={{
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 2,
+                        p: 1.8,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 1,
+                        '&:hover': { background: 'rgba(34,49,74,0.65)' },
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={700} noWrap>{movie.alternativeTitle || movie.title}</Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                          {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
+                        </Typography>
+                      </Box>
+                      <ChevronRightRounded sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                    </ListItemButton>
                   ))
                 ) : (
                   <Typography variant="body2" color="text.secondary">
