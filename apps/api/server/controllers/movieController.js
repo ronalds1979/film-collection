@@ -3,9 +3,34 @@ import { ingestMovieSchema, updateMovieSchema } from '../schemas/movie.js';
 import { lookupMetadata } from '../services/metadata.js';
 import { isValidRetailBarcode } from '../ocr.js';
 
-// ⚡ Bolt: Reuse a single Intl.Collator and cache static genres in memory
-const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
+// ⚡ Bolt: Cache static genres in memory and bound external UPCItemDB lookups
 let cachedGenres = null;
+
+const UPC_CACHE_MAX = 200;
+const UPC_CACHE_TTL_MS = 15 * 60 * 1000;
+const upcCache = new Map();
+
+const getCachedUpc = (barcode) => {
+  const entry = upcCache.get(barcode);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    upcCache.delete(barcode);
+    return null;
+  }
+  upcCache.delete(barcode);
+  upcCache.set(barcode, entry);
+  return entry.value;
+};
+
+const setCachedUpc = (barcode, value) => {
+  if (upcCache.has(barcode)) {
+    upcCache.delete(barcode);
+  } else if (upcCache.size >= UPC_CACHE_MAX) {
+    const oldestKey = upcCache.keys().next().value;
+    if (oldestKey !== undefined) upcCache.delete(oldestKey);
+  }
+  upcCache.set(barcode, { value, expiresAt: Date.now() + UPC_CACHE_TTL_MS });
+};
 
 export const getHealth = (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
@@ -397,13 +422,14 @@ export const getBarcodeMetadata = async (req, res, next) => {
           .filter((lookup) => lookup.status === 200)
           .flatMap((lookup) => lookup.payload.results);
         hasLiveResults = liveResults.length > 0;
-        // ⚡ Bolt: O(1) Set lookup for TMDb IDs and shared Intl.Collator for title deduplication
+        // ⚡ Bolt: O(1) Set lookup for both TMDb IDs and normalized titles
         const catalogIds = new Set(catalogResults.map((catalog) => catalog.id).filter(Boolean));
+        const catalogTitles = new Set(catalogResults.map((catalog) => (catalog.title || '').trim().toLowerCase()));
         results = [
           ...catalogResults,
           ...liveResults.filter((live) => (
             !(live.id && catalogIds.has(live.id))
-            && !catalogResults.some((catalog) => titleCollator.compare(live.title, catalog.title) === 0)
+            && !catalogTitles.has((live.title || '').trim().toLowerCase())
           )),
         ];
       }
@@ -417,14 +443,18 @@ export const getBarcodeMetadata = async (req, res, next) => {
       });
     }
 
-    const productUrl = new URL('https://api.upcitemdb.com/prod/trial/lookup');
-    productUrl.searchParams.set('upc', barcode);
-    const productResponse = await fetch(productUrl, { signal: AbortSignal.timeout(8000) });
-    if (!productResponse.ok) {
-      throw new Error(`UPCItemDB returned HTTP ${productResponse.status}.`);
-    }
+    let productData = getCachedUpc(barcode);
+    if (!productData) {
+      const productUrl = new URL('https://api.upcitemdb.com/prod/trial/lookup');
+      productUrl.searchParams.set('upc', barcode);
+      const productResponse = await fetch(productUrl, { signal: AbortSignal.timeout(8000) });
+      if (!productResponse.ok) {
+        throw new Error(`UPCItemDB returned HTTP ${productResponse.status}.`);
+      }
 
-    const productData = await productResponse.json();
+      productData = await productResponse.json();
+      setCachedUpc(barcode, productData);
+    }
     const product = Array.isArray(productData.items) ? productData.items[0] : null;
     if (!product?.title) {
       return res.json({

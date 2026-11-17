@@ -8,14 +8,7 @@ import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { Movie, Genre, Edition } from '../types';
 import { API_BASE, baseCollator } from '../utils/helpers';
-import { formatOptions, watchedOptions } from '../utils/constants';
-
-// ⚡ Bolt: Precompute O(1) lookup map instead of scanning formatOptions per rendered row
-const formatLabelMap = new Map(formatOptions.map((option) => [option.id, option.label]));
-
-function formatLabel(formatId?: string | null) {
-  return (formatId && formatLabelMap.get(formatId)) || formatId || 'Format n/a';
-}
+import { formatLabel, watchedOptions } from '../utils/constants';
 
 const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onSelect, hasActiveFilters, onClearFilters }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
@@ -189,26 +182,19 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const [renderedCount, setRenderedCount] = useState(INITIAL_CAROUSEL_ITEMS);
-  const sortedMovies = useMemo(
-    () => [...movies].sort((left, right) => baseCollator.compare(
-      left.alternativeTitle || left.title,
-      right.alternativeTitle || right.title
-    )),
-    [movies],
-  );
 
   useEffect(() => {
     setRenderedCount(INITIAL_CAROUSEL_ITEMS);
   }, [movies]);
 
   const visibleMovies = useMemo(
-    () => sortedMovies.slice(0, renderedCount),
-    [sortedMovies, renderedCount],
+    () => movies.slice(0, renderedCount),
+    [movies, renderedCount],
   );
 
   const loadMoreIfNeeded = () => {
-    if (renderedCount < sortedMovies.length) {
-      setRenderedCount((prev) => Math.min(prev + INITIAL_CAROUSEL_ITEMS, sortedMovies.length));
+    if (renderedCount < movies.length) {
+      setRenderedCount((prev) => Math.min(prev + INITIAL_CAROUSEL_ITEMS, movies.length));
     }
   };
 
@@ -314,7 +300,27 @@ export function CollectionPage() {
         if (!response.ok) throw new Error(`The collection could not be loaded (HTTP ${response.status}).`);
         const payload = await response.json() as Movie[];
         if (!Array.isArray(payload)) throw new Error('The collection API returned an invalid response.');
-        if (!cancelled) setMovies(payload);
+        // ⚡ Bolt: Pre-sort movies/editions and pre-normalize search text once on fetch
+        // instead of re-allocating lowercase strings and re-sorting on every filter keystroke.
+        const prepared = payload
+          .map((movie) => ({
+            ...movie,
+            editions: movie.editions && movie.editions.length > 1
+              ? [...movie.editions].sort((left, right) => (
+                (left.editionYear || 0) - (right.editionYear || 0)
+                || (left.id || 0) - (right.id || 0)
+              ))
+              : movie.editions,
+            _searchText: [movie.title, movie.originalTitle, movie.alternativeTitle]
+              .filter(Boolean)
+              .join('\0')
+              .toLowerCase(),
+          }))
+          .sort((left, right) => baseCollator.compare(
+            left.alternativeTitle || left.title,
+            right.alternativeTitle || right.title,
+          ));
+        if (!cancelled) setMovies(prepared);
       } catch (error) {
         if (!cancelled) {
           setLoadError(error instanceof Error ? error.message : 'The collection could not be loaded.');
@@ -358,13 +364,10 @@ export function CollectionPage() {
       const matchesUnwatched = collectionView !== 'unwatched' || (movie.watchedStatus || 'unwatched') === 'unwatched';
       if (!matchesUnwatched) return false;
 
-      // ⚡ Bolt: Perform cheap title checks before the nested genre loop to preserve short-circuiting
+      // ⚡ Bolt: Perform cheap title checks against pre-normalized string before the nested genre loop
       if (normalizedSearch) {
-        const matchesSearch =
-          movie.title?.toLowerCase().includes(normalizedSearch) ||
-          movie.originalTitle?.toLowerCase().includes(normalizedSearch) ||
-          movie.alternativeTitle?.toLowerCase().includes(normalizedSearch);
-        if (!matchesSearch) return false;
+        const searchTarget = movie._searchText ?? `${movie.title || ''}\0${movie.originalTitle || ''}\0${movie.alternativeTitle || ''}`.toLowerCase();
+        if (!searchTarget.includes(normalizedSearch)) return false;
       }
 
       let matchesGenre = genreFilter === 'all';
@@ -395,15 +398,7 @@ export function CollectionPage() {
         rows.push({ movie, edition: editions[0] });
       }
     }
-    return rows.sort((left, right) => {
-      const titleOrder = baseCollator.compare(
-        left.movie.alternativeTitle || left.movie.title,
-        right.movie.alternativeTitle || right.movie.title
-      );
-      if (titleOrder !== 0) return titleOrder;
-      return (left.edition?.editionYear || 0) - (right.edition?.editionYear || 0)
-        || (left.edition?.id || 0) - (right.edition?.id || 0);
-    });
+    return rows;
   }, [collectionView, filteredMovies]);
 
   const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';

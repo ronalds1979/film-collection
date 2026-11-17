@@ -29,6 +29,7 @@ export type Movie = {
   tmdbUrl?: string | null;
   genres?: Genre[];
   editions?: Edition[];
+  _searchText?: string;
 };
 
 export type Genre = {

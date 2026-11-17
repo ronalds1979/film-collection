@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -8,7 +8,7 @@ import ClearRounded from '@mui/icons-material/ClearRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
-import { formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
+import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
 function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info' {
   const lower = msg.toLowerCase();
@@ -36,7 +36,7 @@ function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info
 }
 
 function editionFormatLabel(formatId?: string | null) {
-  return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Edition';
+  return formatLabel(formatId, 'Edition');
 }
 
 export function AddMoviePage() {
@@ -92,6 +92,11 @@ export function AddMoviePage() {
   const sortedSearchResults = useMemo(
     () => [...searchResults].sort((left, right) => baseCollator.compare(left.title, right.title)),
     [searchResults]
+  );
+
+  const genreNameMap = useMemo(
+    () => new Map(genres.map((genre) => [genre.id, genre.name])),
+    [genres],
   );
 
   useEffect(() => {
@@ -223,11 +228,11 @@ export function AddMoviePage() {
     };
   }, [isEditing, movieId, searchParams]);
 
-  const updateForm = (field: string, value: string | boolean | string[]) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  };
+  const updateForm = useCallback((field: string, value: string | boolean | string[]) => {
+    setForm((current) => (current[field as keyof typeof current] === value ? current : { ...current, [field]: value }));
+  }, []);
 
-  const handleCoverSelected = async (slot: 'front' | 'back', file: File | null) => {
+  const handleCoverSelected = useCallback(async (slot: 'front' | 'back', file: File | null) => {
     if (!file) {
       return;
     }
@@ -336,9 +341,25 @@ export function AddMoviePage() {
     } finally {
       setUploadingCovers((current) => ({ ...current, [slot]: false }));
     }
-  };
+  }, []);
 
-  const handleRotateCover = async (slot: 'front' | 'back') => {
+  const handleFrontCoverChange = useCallback((file: File | null) => {
+    void handleCoverSelected('front', file);
+  }, [handleCoverSelected]);
+
+  const handleBackCoverChange = useCallback((file: File | null) => {
+    void handleCoverSelected('back', file);
+  }, [handleCoverSelected]);
+
+  const handleFrontCoverRetry = useCallback(() => {
+    void handleCoverSelected('front', frontCover);
+  }, [handleCoverSelected, frontCover]);
+
+  const handleBackCoverRetry = useCallback(() => {
+    void handleCoverSelected('back', backCover);
+  }, [handleCoverSelected, backCover]);
+
+  const handleRotateCover = useCallback(async (slot: 'front' | 'back') => {
     const cover = uploadedCovers[slot];
     if (!cover) return;
 
@@ -360,7 +381,15 @@ export function AddMoviePage() {
     } finally {
       setRotatingCovers((current) => ({ ...current, [slot]: false }));
     }
-  };
+  }, [handleCoverSelected, uploadedCovers]);
+
+  const handleFrontCoverRotate = useCallback(() => {
+    void handleRotateCover('front');
+  }, [handleRotateCover]);
+
+  const handleBackCoverRotate = useCallback(() => {
+    void handleRotateCover('back');
+  }, [handleRotateCover]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -818,9 +847,9 @@ export function AddMoviePage() {
                 uploadedPath={uploadedCovers.front?.path}
                 uploadStatus={coverUploadStatus.front}
                 rotating={Boolean(rotatingCovers.front)}
-                onChange={(file) => void handleCoverSelected('front', file)}
-                onRetry={() => void handleCoverSelected('front', frontCover)}
-                onRotate={() => void handleRotateCover('front')}
+                onChange={handleFrontCoverChange}
+                onRetry={handleFrontCoverRetry}
+                onRotate={handleFrontCoverRotate}
               />
               <UploadField
                 label="Back cover"
@@ -830,9 +859,9 @@ export function AddMoviePage() {
                 uploadedPath={uploadedCovers.back?.path}
                 uploadStatus={coverUploadStatus.back}
                 rotating={Boolean(rotatingCovers.back)}
-                onChange={(file) => void handleCoverSelected('back', file)}
-                onRetry={() => void handleCoverSelected('back', backCover)}
-                onRotate={() => void handleRotateCover('back')}
+                onChange={handleBackCoverChange}
+                onRetry={handleBackCoverRetry}
+                onRotate={handleBackCoverRotate}
               />
             </Stack>
           </Paper>
@@ -855,7 +884,7 @@ export function AddMoviePage() {
                   }}
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((id) => <Chip key={id} label={genres.find((genre) => genre.id === id)?.name || id} size="small" />)}
+                      {selected.map((id) => <Chip key={id} label={genreNameMap.get(id) || id} size="small" />)}
                     </Box>
                   )}
                 >
@@ -873,19 +902,21 @@ export function AddMoviePage() {
             <Grid item xs={12} md={3}>
               <NameOptionField
                 label="Movie country"
+                field="countryId"
                 value={form.countryId}
                 options={countryOptions}
                 helperText="Search by country name, or type a country."
-                onChange={(value) => updateForm('countryId', value)}
+                onFieldChange={updateForm}
               />
             </Grid>
             <Grid item xs={12} md={3}>
               <NameOptionField
                 label="Original language"
+                field="originalLanguageId"
                 value={form.originalLanguageId}
                 options={languageOptions}
                 helperText="Search by language name, or type a language."
-                onChange={(value) => updateForm('originalLanguageId', value)}
+                onFieldChange={updateForm}
               />
             </Grid>
             <Grid item xs={12} md={4}>
@@ -895,7 +926,7 @@ export function AddMoviePage() {
               <TextField fullWidth label="Release date" type="date" InputLabelProps={{ shrink: true }} value={form.releaseDate} onChange={(event) => updateForm('releaseDate', event.target.value)} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <SuggestionField label="Age rating" value={form.ageRating} options={ageRatingOptions} onChange={(value) => updateForm('ageRating', value)} />
+              <SuggestionField label="Age rating" field="ageRating" value={form.ageRating} options={ageRatingOptions} onFieldChange={updateForm} />
             </Grid>
             <Grid item xs={12} md={3}>
               <FormControlLabel
@@ -952,22 +983,23 @@ export function AddMoviePage() {
               </FormControl>
             </Grid>
             <Grid item xs={12} md={4}>
-              <SuggestionField label="Condition" value={form.condition} options={conditionOptions} onChange={(value) => updateForm('condition', value)} />
+              <SuggestionField label="Condition" field="condition" value={form.condition} options={conditionOptions} onFieldChange={updateForm} />
             </Grid>
             <Grid item xs={12} md={3}>
               <NameOptionField
                 label="Edition country"
+                field="countryEditionId"
                 value={form.countryEditionId}
                 options={countryOptions}
                 helperText="Country where this edition was released."
-                onChange={(value) => updateForm('countryEditionId', value)}
+                onFieldChange={updateForm}
               />
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField fullWidth label="Distributor" placeholder="e.g. Warner Bros." value={form.distributorId} onChange={(event) => updateForm('distributorId', event.target.value)} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <SuggestionField label="Movie version" value={form.movieVersionId} options={movieVersionOptions} onChange={(value) => updateForm('movieVersionId', value)} />
+              <SuggestionField label="Movie version" field="movieVersionId" value={form.movieVersionId} options={movieVersionOptions} onFieldChange={updateForm} />
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField fullWidth label="Collection name" placeholder="e.g. Sci-fi shelf" value={form.collectionId} onChange={(event) => updateForm('collectionId', event.target.value)} />
@@ -976,7 +1008,7 @@ export function AddMoviePage() {
               <TextField fullWidth label="Storage location" placeholder="e.g. Living room · Shelf 2" value={form.locationId} onChange={(event) => updateForm('locationId', event.target.value)} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <SuggestionField label="DVD / Blu-ray region" value={form.region} options={regionOptions} onChange={(value) => updateForm('region', value)} />
+              <SuggestionField label="DVD / Blu-ray region" field="region" value={form.region} options={regionOptions} onFieldChange={updateForm} />
             </Grid>
             <Grid item xs={12} md={4}>
               <TextField fullWidth label="Purchase price" type="number" value={form.purchasePrice} onChange={(event) => updateForm('purchasePrice', event.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">€</InputAdornment> }} />

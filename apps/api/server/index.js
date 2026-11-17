@@ -112,23 +112,43 @@ const verifyUploadedCoversExist = async (payload, fields) => {
 
 const cleanupReplacedCoverFiles = async (previousPaths) => {
   const uniquePaths = [...new Set(previousPaths.filter(Boolean))];
+  const candidates = uniquePaths
+    .map((oldPath) => ({ oldPath, resolved: resolveUploadFilePath(oldPath) }))
+    .filter((item) => Boolean(item.resolved));
+  if (!candidates.length) return;
+
+  const validPaths = candidates.map((item) => item.oldPath);
+  // ⚡ Bolt: Batch all replaced-cover DB reference checks into two queries instead of 2 queries per path
+  const [editions, movies] = await Promise.all([
+    prisma.edition.findMany({
+      where: {
+        OR: [
+          { frontCoverPath: { in: validPaths } },
+          { backCoverPath: { in: validPaths } },
+          { spineImagePath: { in: validPaths } },
+        ],
+      },
+      select: { frontCoverPath: true, backCoverPath: true, spineImagePath: true },
+    }),
+    prisma.movie.findMany({
+      where: { posterPath: { in: validPaths } },
+      select: { posterPath: true },
+    }),
+  ]);
+
+  const referencedPaths = new Set();
+  for (const edition of editions) {
+    if (edition.frontCoverPath) referencedPaths.add(edition.frontCoverPath);
+    if (edition.backCoverPath) referencedPaths.add(edition.backCoverPath);
+    if (edition.spineImagePath) referencedPaths.add(edition.spineImagePath);
+  }
+  for (const movie of movies) {
+    if (movie.posterPath) referencedPaths.add(movie.posterPath);
+  }
+
   const tasks = [];
-  for (const oldPath of uniquePaths) {
-    const resolved = resolveUploadFilePath(oldPath);
-    if (!resolved) continue;
-    const [editionRefs, movieRefs] = await Promise.all([
-      prisma.edition.count({
-        where: {
-          OR: [
-            { frontCoverPath: oldPath },
-            { backCoverPath: oldPath },
-            { spineImagePath: oldPath },
-          ],
-        },
-      }),
-      prisma.movie.count({ where: { posterPath: oldPath } }),
-    ]);
-    if (editionRefs > 0 || movieRefs > 0) continue;
+  for (const { oldPath, resolved } of candidates) {
+    if (referencedPaths.has(oldPath)) continue;
     tasks.push(
       fs.promises.unlink(resolved).catch((error) => {
         if (error?.code !== 'ENOENT') {
@@ -154,19 +174,23 @@ const cleanupOrphanedUploads = async (maxAgeMs = 24 * 60 * 60 * 1000) => {
   }
 
   const cutoffMs = Date.now() - maxAgeMs;
-  const staleFiles = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.jpg')) continue;
-    const fullPath = path.join(uploadsDir, entry.name);
-    try {
-      const stat = await fs.promises.stat(fullPath);
-      if (stat.mtimeMs < cutoffMs) {
-        staleFiles.push({ fullPath, uploadPath: `/uploads/${entry.name}` });
+  const jpgEntries = entries.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.jpg'));
+  // ⚡ Bolt: Stat candidate upload files concurrently instead of sequentially
+  const statResults = await Promise.all(
+    jpgEntries.map(async (entry) => {
+      const fullPath = path.join(uploadsDir, entry.name);
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        if (stat.mtimeMs < cutoffMs) {
+          return { fullPath, uploadPath: `/uploads/${entry.name}` };
+        }
+      } catch {
+        // Ignore transient stat errors
       }
-    } catch {
-      // Ignore transient stat errors
-    }
-  }
+      return null;
+    }),
+  );
+  const staleFiles = statResults.filter(Boolean);
   if (!staleFiles.length) return;
 
   const [editions, movies] = await Promise.all([
@@ -189,10 +213,11 @@ const cleanupOrphanedUploads = async (maxAgeMs = 24 * 60 * 60 * 1000) => {
     if (movie.posterPath) referencedPaths.add(movie.posterPath);
   }
 
-  for (const file of staleFiles) {
-    if (!referencedPaths.has(file.uploadPath)) {
-      await fs.promises.unlink(file.fullPath).catch(() => {});
-    }
+  const unlinkTasks = staleFiles
+    .filter((file) => !referencedPaths.has(file.uploadPath))
+    .map((file) => fs.promises.unlink(file.fullPath).catch(() => {}));
+  if (unlinkTasks.length) {
+    await Promise.all(unlinkTasks);
   }
 };
 

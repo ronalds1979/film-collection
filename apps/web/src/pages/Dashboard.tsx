@@ -8,13 +8,8 @@ import VisibilityOffRounded from '@mui/icons-material/VisibilityOffRounded';
 import EditRounded from '@mui/icons-material/EditRounded';
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
-import { Summary, Movie, Genre, Edition } from '../types';
-import { API_BASE, baseCollator } from '../utils/helpers';
-import { formatOptions, watchedOptions } from '../utils/constants';
-
-function formatLabel(formatId?: string | null) {
-  return formatOptions.find((option) => option.id === formatId)?.label || formatId || 'Format n/a';
-}
+import { Summary, Movie } from '../types';
+import { API_BASE } from '../utils/helpers';
 
 function StatCard({ title, value, subtitle, icon, to }: { title: string; value: number; subtitle: string; icon: React.ReactNode; to: string }) {
   return (

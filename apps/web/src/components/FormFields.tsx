@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
@@ -6,17 +6,27 @@ import { CoverUploadStatus } from '../types';
 
 type NamedOption = { id: string; name: string };
 
-export function NameOptionField({ label, value, options, helperText, onChange }: {
+export const NameOptionField = memo(function NameOptionField({ label, value, options, helperText, field, onChange, onFieldChange }: {
   label: string;
   value: string;
   options: NamedOption[];
   helperText: string;
-  onChange: (value: string) => void;
+  field?: string;
+  onChange?: (value: string) => void;
+  onFieldChange?: (field: string, value: string) => void;
 }) {
   const selectedOption = useMemo(
     () => options.find((option) => option.id === value || option.name === value),
     [options, value],
   );
+
+  const emitChange = (nextValue: string) => {
+    if (field && onFieldChange) {
+      onFieldChange(field, nextValue);
+    } else {
+      onChange?.(nextValue);
+    }
+  };
 
   return (
     <Autocomplete<NamedOption, false, false, true>
@@ -26,37 +36,47 @@ export function NameOptionField({ label, value, options, helperText, onChange }:
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
       isOptionEqualToValue={(option, selected) => typeof selected !== 'string' && option.id === selected.id}
       onChange={(_event, selection) => {
-        onChange(typeof selection === 'string' ? selection : selection?.id || '');
+        emitChange(typeof selection === 'string' ? selection : selection?.id || '');
       }}
       onInputChange={(_event, input, reason) => {
-        if (reason === 'input' || reason === 'clear') onChange(input);
+        if (reason === 'input' || reason === 'clear') emitChange(input);
       }}
       renderInput={(params) => <TextField {...params} label={label} helperText={helperText} />}
     />
   );
-}
+});
 
-export function SuggestionField({ label, value, options, onChange }: {
+export const SuggestionField = memo(function SuggestionField({ label, value, options, field, onChange, onFieldChange }: {
   label: string;
   value: string;
   options: string[];
-  onChange: (value: string) => void;
+  field?: string;
+  onChange?: (value: string) => void;
+  onFieldChange?: (field: string, value: string) => void;
 }) {
+  const emitChange = (nextValue: string) => {
+    if (field && onFieldChange) {
+      onFieldChange(field, nextValue);
+    } else {
+      onChange?.(nextValue);
+    }
+  };
+
   return (
     <Autocomplete<string, false, false, true>
       freeSolo
       options={options}
       value={value || null}
-      onChange={(_event, selection) => onChange(selection || '')}
+      onChange={(_event, selection) => emitChange(selection || '')}
       onInputChange={(_event, input, reason) => {
-        if (reason === 'input' || reason === 'clear') onChange(input);
+        if (reason === 'input' || reason === 'clear') emitChange(input);
       }}
       renderInput={(params) => <TextField {...params} label={label} />}
     />
   );
-}
+});
 
-export function UploadField({ label, value, uploading, uploaded, uploadedPath, uploadStatus, rotating, onChange, onRetry, onRotate }: {
+export const UploadField = memo(function UploadField({ label, value, uploading, uploaded, uploadedPath, uploadStatus, rotating, onChange, onRetry, onRotate }: {
   label: string;
   value: File | null;
   uploading: boolean;
@@ -155,4 +175,4 @@ export function UploadField({ label, value, uploading, uploaded, uploadedPath, u
       )}
     </Box>
   );
-}
+});

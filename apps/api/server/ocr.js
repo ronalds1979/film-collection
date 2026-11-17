@@ -136,7 +136,8 @@ const downsampleGrayscale2x = (src, width, height) => {
 const detectBarcodeAcrossAngles = (baseLuminance, baseWidth, baseHeight) => {
   let rotatedBuffer;
 
-  for (const angle of [0, 90, 180, 270]) {
+  // ⚡ Bolt: Try linear 180° reversal before strided 90°/270° matrix transposes
+  for (const angle of [0, 180, 90, 270]) {
     let luminanceBytes = baseLuminance;
     let width = baseWidth;
     let height = baseHeight;

@@ -4,6 +4,12 @@ export const formatOptions = [
   { id: 'FMT03', label: '4K UHD' },
   { id: 'FMT04', label: 'Combo' },
 ];
+// ⚡ Bolt: Shared O(1) lookup map for edition format labels across pages
+export const formatLabelMap = new Map<string, string>(formatOptions.map((option) => [option.id, option.label]));
+
+export function formatLabel(formatId?: string | null, fallback = 'Format n/a') {
+  return (formatId && formatLabelMap.get(formatId)) || formatId || fallback;
+}
 export const editionTypeOptions = [
   { id: 'ED01', label: 'Standard' },
   { id: 'ED02', label: 'Special Edition' },

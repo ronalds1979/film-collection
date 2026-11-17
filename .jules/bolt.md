@@ -31,3 +31,7 @@
 ## 2026-11-11 - Avoid Array Allocations for Simple String Operations
 **Learning:** For simple string parsing or checksum calculations (like validating barcodes), using chained, array-allocating methods (e.g., `.split('')`, `.map()`, `.reverse()`, `.reduce()`) adds unnecessary overhead due to array allocations and garbage collection.
 **Action:** Replace array-allocating methods with string-based `for` loops and `value.charCodeAt()` (offsetting by 48 for digits) to optimize performance and eliminate unnecessary allocations, especially in frequently called functions.
+
+## 2026-11-17 - Pre-sorted Fetch Payloads, Memoized Form Controls & Batched Cleanup
+**Learning:** Re-sorting movies and editions inside `useMemo` on every filter/search change and keeping un-memoized `Autocomplete` fields inside a large form page causes unnecessary work on every keystroke. On the backend, sequential `stat` / DB reference checks during upload cleanup add serial I/O latency, and testing 90°/270° strided transposes before 180° linear reversal wastes cache lines during upside-down barcode scans.
+**Action:** Pre-sort fetched movies/editions and pre-normalize `_searchText` once on fetch in `Collection.tsx`; memoize `FormFields.tsx` components with stabilized callbacks and O(1) lookup maps; batch DB/filesystem cleanup operations in `index.js`; test `[0, 180, 90, 270]` in `ocr.js`; and sync `upcCache` / `Set` lookups in `movieController.js`.
