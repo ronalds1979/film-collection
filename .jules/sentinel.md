@@ -43,3 +43,11 @@
 - Bounded TMDb, OMDb, and UPCItemDB `fetch()` responses with `redirect: 'error'` and streamed size limits (`readBoundedJson`, 2 MB max).
 - Centralized `prisma`, `seedGenres`, and cover verification/cleanup helpers in `apps/api/server/services/db.js`, aligned `movieController.js` and `routes/api.js` (including `getMovieById`, `verifyUploadedCoversExist`, and `cleanupReplacedCoverFiles`), and preserved/supported `durationMinutes`, `personalRating`, `rewatchFlag`, `purchaseDate`, and `spineImagePath` in `PUT /api/movies/:id`.
 - Set `Cache-Control: private` on `/uploads` when `API_AUTH_TOKEN` is configured and updated `apps/web/public/sw.js` and `public/sw.js` to avoid caching `private`/`no-store` responses; replaced stale root `src/` duplicates with thin re-exports pointing to `apps/web/src/`.
+
+## 2026-11-17 - Schema Contract, Symlink & Metadata Hardening
+**Vulnerabilities Remediated:**
+- Hardened `isPrivateOrLoopbackHost` in `apps/api/server/schemas/movie.js` to block `.local`/`.internal` hostnames, CGNAT (`100.64.0.0/10`), benchmarking (`198.18.0.0/15`), multicast/reserved IPv4 (`>= 224.0.0.0`), and IPv6 multicast (`ff*::`) while restricting IPv6 prefix checks to addresses containing `:`.
+- Restored explicit API validation error messages across `ingestMovieSchema` (`optionalWholeNumber`, `optionalAmount`, `textIdentifier`, `optionalBoolean`, `genreIds`, and `title`) and rejected whitespace-only or boolean inputs in numeric preprocessing.
+- Switched `verifyUploadedCoversExist` and `cleanupOrphanedUploads` in `apps/api/server/services/db.js` from `stat` to `lstat` so symbolic links in `uploadsDir` are rejected and never followed.
+- Sanitized external TMDb/OMDb `poster_path`, `backdrop_path`, and `imdb_id` values in `apps/api/server/services/metadata.js` and `apps/web/src/pages/AddMovie.tsx` (blocking protocol-relative `//` poster paths and malformed IDs).
+- Set `Cache-Control: private, max-age=300` on `/api/genres` when `API_AUTH_TOKEN` is configured, removed unused helpers in `apps/api/server/index.js`, and expanded `tests/controllers/movieController.test.js`.

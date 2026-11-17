@@ -1,9 +1,46 @@
 import { z } from 'zod';
 
-const optionalNumber = (schema) => z.preprocess(
-  (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
-  schema.optional().nullable(),
+const normalizeOptionalNumericInput = (val) => {
+  if (val === '' || val === undefined || val === null) return undefined;
+  if (typeof val === 'boolean') return NaN;
+  if (typeof val === 'string' && val.trim() === '') return undefined;
+  return Number(val);
+};
+
+const optionalWholeNumber = (label, max) => z.preprocess(
+  normalizeOptionalNumericInput,
+  z.number({
+    invalid_type_error: `${label} must be a non-negative whole number.`,
+  })
+    .int({ message: `${label} must be a non-negative whole number.` })
+    .min(0, { message: `${label} must be a non-negative whole number.` })
+    .max(max, { message: `${label} must be at most ${max}.` })
+    .optional()
+    .nullable(),
 );
+
+const optionalAmount = (label, max) => z.preprocess(
+  normalizeOptionalNumericInput,
+  z.number({
+    invalid_type_error: `${label} must be a non-negative amount.`,
+  })
+    .finite({ message: `${label} must be a non-negative amount.` })
+    .min(0, { message: `${label} must be a non-negative amount.` })
+    .max(max, { message: `${label} must be at most ${max}.` })
+    .optional()
+    .nullable(),
+);
+
+const textIdentifier = (field) => z
+  .string({ invalid_type_error: `${field} must be a text identifier.` })
+  .trim()
+  .max(64)
+  .optional()
+  .nullable();
+
+const optionalBoolean = (field) => z
+  .boolean({ invalid_type_error: `${field} must be a boolean value.` })
+  .optional();
 
 const SAFE_UPLOAD_PATH_REGEX = /^\/uploads\/(?!\.\.?$)[^/\\]+$/;
 
@@ -19,10 +56,27 @@ const coverPathSchema = z
 
 const isPrivateOrLoopbackHost = (rawHostname) => {
   const host = String(rawHostname || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (!host || host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '::') {
+  if (
+    !host
+    || host === 'localhost'
+    || host.endsWith('.localhost')
+    || host.endsWith('.local')
+    || host.endsWith('.internal')
+    || host === '::1'
+    || host === '::'
+  ) {
     return true;
   }
-  if (host.startsWith('::ffff:') || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+  if (
+    host.includes(':')
+    && (
+      host.startsWith('::ffff:')
+      || host.startsWith('fe80:')
+      || host.startsWith('fc')
+      || host.startsWith('fd')
+      || host.startsWith('ff')
+    )
+  ) {
     return true;
   }
   const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -35,10 +89,13 @@ const isPrivateOrLoopbackHost = (rawHostname) => {
     if (
       a === 0
       || a === 10
+      || (a === 100 && b >= 64 && b <= 127)
       || a === 127
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
+      || (a === 198 && (b === 18 || b === 19))
+      || a >= 224
     ) {
       return true;
     }
@@ -94,50 +151,56 @@ const safePosterSchema = z
   .nullable();
 
 export const ingestMovieSchema = z.object({
-  title: z.string().trim().min(1, 'A movie title is required.').max(300),
+  title: z.string({
+    required_error: 'A movie title is required.',
+    invalid_type_error: 'title must be a text value.',
+  }).trim().min(1, 'A movie title is required.').max(300),
   originalTitle: z.string().trim().max(300).optional().nullable(),
   alternativeTitle: z.string().trim().max(300).optional().nullable(),
-  releaseYear: optionalNumber(z.number().int().min(0).max(9999)),
+  releaseYear: optionalWholeNumber('Release year', 9999),
   releaseDate: z.string().trim().max(64).optional().nullable(),
-  countryId: z.string().trim().max(64).optional().nullable(),
-  durationMinutes: optionalNumber(z.number().int().min(0).max(10000)),
+  countryId: textIdentifier('countryId'),
+  durationMinutes: optionalWholeNumber('Duration', 10000),
   synopsis: z.string().trim().max(10000).optional().nullable(),
-  originalLanguageId: z.string().trim().max(64).optional().nullable(),
+  originalLanguageId: textIdentifier('originalLanguageId'),
   ageRating: z.string().trim().max(64).optional().nullable(),
-  personalRating: optionalNumber(z.number().int().min(0).max(10)),
-  favorite: z.boolean().optional(),
+  personalRating: optionalWholeNumber('Personal rating', 10),
+  favorite: optionalBoolean('favorite'),
   watchedStatus: z.string().trim().max(64).optional().nullable().default('unwatched'),
   watchedDate: z.string().trim().max(64).optional().nullable(),
-  rewatchFlag: z.boolean().optional(),
+  rewatchFlag: optionalBoolean('rewatchFlag'),
   notes: z.string().trim().max(10000).optional().nullable(),
   posterPath: safePosterSchema,
   imdbId: z.string().trim().max(64).optional().nullable(),
   tmdbId: z.string().trim().max(64).optional().nullable(),
   imdbUrl: safeUrlSchema,
   tmdbUrl: safeUrlSchema,
-  genreIds: z.array(z.string().max(64)).max(50).optional().default([]),
+  genreIds: z.array(
+    z.string({ invalid_type_error: 'genreIds must be an array of genre identifiers.' }).max(64),
+    { invalid_type_error: 'genreIds must be an array of genre identifiers.' },
+  ).max(50).optional().default([]),
 
-  formatId: z.string().trim().max(64).optional().nullable(),
-  editionTypeId: z.string().trim().max(64).optional().nullable(),
-  movieVersionId: z.string().trim().max(64).optional().nullable(),
-  distributorId: z.string().trim().max(64).optional().nullable(),
-  countryEditionId: z.string().trim().max(64).optional().nullable(),
-  editionYear: optionalNumber(z.number().int().min(0).max(9999)),
+  formatId: textIdentifier('formatId'),
+  editionTypeId: textIdentifier('editionTypeId'),
+  movieVersionId: textIdentifier('movieVersionId'),
+  distributorId: textIdentifier('distributorId'),
+  countryEditionId: textIdentifier('countryEditionId'),
+  editionYear: optionalWholeNumber('Edition year', 9999),
   region: z.string().trim().max(64).optional().nullable(),
   barcode: z.string().trim().max(64).optional().nullable(),
   catalogNumber: z.string().trim().max(128).optional().nullable(),
-  steelbook: z.boolean().optional(),
-  slipcover: z.boolean().optional(),
-  digibook: z.boolean().optional(),
-  booklet: z.boolean().optional(),
-  posterIncluded: z.boolean().optional(),
-  discCount: optionalNumber(z.number().int().min(0).max(1000)),
+  steelbook: optionalBoolean('steelbook'),
+  slipcover: optionalBoolean('slipcover'),
+  digibook: optionalBoolean('digibook'),
+  booklet: optionalBoolean('booklet'),
+  posterIncluded: optionalBoolean('posterIncluded'),
+  discCount: optionalWholeNumber('Disc count', 1000),
   condition: z.string().trim().max(64).optional().nullable(),
   purchaseDate: z.string().trim().max(64).optional().nullable(),
-  purchasePrice: optionalNumber(z.number().min(0).max(1000000)),
-  estimatedValue: optionalNumber(z.number().min(0).max(1000000)),
-  locationId: z.string().trim().max(64).optional().nullable(),
-  collectionId: z.string().trim().max(64).optional().nullable(),
+  purchasePrice: optionalAmount('Purchase price', 1000000),
+  estimatedValue: optionalAmount('Estimated value', 1000000),
+  locationId: textIdentifier('locationId'),
+  collectionId: textIdentifier('collectionId'),
   frontCoverPath: coverPathSchema,
   backCoverPath: coverPathSchema,
   spineImagePath: coverPathSchema,

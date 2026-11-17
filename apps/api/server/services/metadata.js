@@ -3,6 +3,8 @@ import { isSafeHttpsUrl } from '../schemas/movie.js';
 export const MAX_METADATA_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_CACHE_SIZE = 200;
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const SAFE_TMDB_IMAGE_PATH = /^\/[A-Za-z0-9._-]+\.(?:jpg|jpeg|png|webp)$/i;
+const SAFE_IMDB_ID = /^tt\d{1,12}$/i;
 const metadataCache = new Map();
 const inFlightLookups = new Map();
 
@@ -60,6 +62,21 @@ const setCachedMetadata = (key, value) => {
   metadataCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 };
 
+const sanitizeTmdbImagePath = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (SAFE_TMDB_IMAGE_PATH.test(trimmed) || isSafeHttpsUrl(trimmed)) {
+    return trimmed;
+  }
+  return null;
+};
+
+const sanitizeImdbId = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return SAFE_IMDB_ID.test(trimmed) ? trimmed : null;
+};
+
 export const toTmdbResult = (item) => ({
   id: item.id,
   title: item.title || item.name || 'Untitled',
@@ -68,9 +85,9 @@ export const toTmdbResult = (item) => ({
   release_date: item.release_date || item.first_air_date || null,
   releaseDate: item.release_date || item.first_air_date || null,
   overview: item.overview || item.synopsis || '',
-  poster_path: item.poster_path || null,
-  backdrop_path: item.backdrop_path || null,
-  imdb_id: item.imdb_id || null,
+  poster_path: sanitizeTmdbImagePath(item.poster_path),
+  backdrop_path: sanitizeTmdbImagePath(item.backdrop_path),
+  imdb_id: sanitizeImdbId(item.imdb_id),
   source: 'tmdb',
 });
 
@@ -160,7 +177,7 @@ export const lookupMetadata = async (rawQuery) => {
             releaseDate: item.Year || null,
             overview: item.Plot || item.Type || '',
             poster_path: item.Poster && item.Poster !== 'N/A' && isSafeHttpsUrl(item.Poster) ? item.Poster : null,
-            imdb_id: item.imdbID || null,
+            imdb_id: sanitizeImdbId(item.imdbID),
             source: 'imdb',
           });
         }

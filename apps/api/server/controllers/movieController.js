@@ -65,7 +65,7 @@ export const getGenres = async (_req, res, next) => {
       await seedGenres();
       cachedGenres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
     }
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Cache-Control', process.env.API_AUTH_TOKEN?.trim() ? 'private, max-age=300' : 'public, max-age=300');
     res.json(cachedGenres);
   } catch (error) {
     next(error);

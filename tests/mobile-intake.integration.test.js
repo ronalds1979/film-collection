@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { terminateOcrWorker } from '../apps/api/server/ocr.js';
+import { uploadsDir } from '../apps/api/server/services/db.js';
 
 const sampleDirectory = process.env.OCR_SAMPLE_DIR || path.join(os.homedir(), 'Pictures');
 const projectRoot = process.cwd();
@@ -83,7 +84,7 @@ test('mobile intake reads barcodes, enriches titles, and saves front/back covers
       assert.ok(payload.file.path.startsWith('/uploads/'));
       assert.match(payload.file.filename, /\.jpg$/i, 'saved camera covers should use normalized JPEG images');
       uploadedCovers[sample.slot] = payload.file;
-      uploadedPaths.push(path.join(process.cwd(), 'uploads', payload.file.filename));
+      uploadedPaths.push(path.join(uploadsDir, payload.file.filename));
 
       const storedImage = await fetch(`${baseUrl}${payload.file.path}`);
       assert.equal(storedImage.status, 200, `${sample.slot} image should be available after upload`);

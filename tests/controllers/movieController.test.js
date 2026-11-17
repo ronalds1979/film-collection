@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { updateMovie } from '../../apps/api/server/controllers/movieController.js';
 import { ingestMovieSchema, isSafeHttpUrl, isSafeHttpsUrl } from '../../apps/api/server/schemas/movie.js';
-import { readBoundedJson } from '../../apps/api/server/services/metadata.js';
+import { readBoundedJson, toTmdbResult } from '../../apps/api/server/services/metadata.js';
 
 test('updateMovie validation', async (t) => {
   await t.test('should return 400 if movie ID is not a number', async () => {
@@ -61,8 +61,14 @@ test('URL validation blocks loopback, private ranges, credentials, and non-HTTPS
     'https://192.168.1.10/cover.jpg',
     'http://169.254.169.254/latest/meta-data/',
     'http://172.16.0.1/internal',
+    'http://100.64.0.1/cgnat',
+    'http://198.18.0.1/bench',
+    'http://224.0.0.1/multicast',
+    'https://metadata.internal/token',
+    'http://printer.local/status',
     'http://[::1]:8080/',
     'http://[::ffff:127.0.0.1]/',
+    'http://[ff02::1]/',
     'https://user:pass@example.com/poster.jpg',
     'javascript:alert(1)',
   ]) {
@@ -70,11 +76,56 @@ test('URL validation blocks loopback, private ranges, credentials, and non-HTTPS
     assert.equal(isSafeHttpsUrl(unsafeUrl), false, `Expected isSafeHttpsUrl to reject ${unsafeUrl}`);
   }
 
+  // Ensure normal domains starting with fc/fd/ff are not falsely blocked as IPv6 prefixes
+  assert.equal(isSafeHttpsUrl('https://ff.example.com/poster.jpg'), true);
+
   const parsed = ingestMovieSchema.safeParse({
     title: 'Test Movie',
     posterPath: 'http://169.254.169.254/latest/meta-data/',
   });
   assert.equal(parsed.success, false);
+});
+
+test('ingestMovieSchema returns expected validation messages', () => {
+  const badDiscCount = ingestMovieSchema.safeParse({ title: 'Test', discCount: 'not-a-number' });
+  assert.equal(badDiscCount.success, false);
+  assert.equal(badDiscCount.error.errors[0].message, 'Disc count must be a non-negative whole number.');
+
+  const badFormatId = ingestMovieSchema.safeParse({ title: 'Test', formatId: 1 });
+  assert.equal(badFormatId.success, false);
+  assert.equal(badFormatId.error.errors[0].message, 'formatId must be a text identifier.');
+
+  const badPrice = ingestMovieSchema.safeParse({ title: 'Test', purchasePrice: -5 });
+  assert.equal(badPrice.success, false);
+  assert.equal(badPrice.error.errors[0].message, 'Purchase price must be a non-negative amount.');
+
+  const badGenres = ingestMovieSchema.safeParse({ title: 'Test', genreIds: 'GEN01' });
+  assert.equal(badGenres.success, false);
+  assert.equal(badGenres.error.errors[0].message, 'genreIds must be an array of genre identifiers.');
+});
+
+test('toTmdbResult sanitizes external poster_path, backdrop_path, and imdb_id', () => {
+  const safe = toTmdbResult({
+    id: 644,
+    title: 'A.I.',
+    poster_path: '/abc123.jpg',
+    backdrop_path: 'https://image.tmdb.org/t/p/original/xyz.png',
+    imdb_id: 'tt0212720',
+  });
+  assert.equal(safe.poster_path, '/abc123.jpg');
+  assert.equal(safe.backdrop_path, 'https://image.tmdb.org/t/p/original/xyz.png');
+  assert.equal(safe.imdb_id, 'tt0212720');
+
+  const malicious = toTmdbResult({
+    id: 644,
+    title: 'A.I.',
+    poster_path: '//evil.example.com/steal.png',
+    backdrop_path: 'http://127.0.0.1/ssrf.jpg',
+    imdb_id: '../admin',
+  });
+  assert.equal(malicious.poster_path, null);
+  assert.equal(malicious.backdrop_path, null);
+  assert.equal(malicious.imdb_id, null);
 });
 
 test('readBoundedJson rejects oversized Content-Length and streamed responses', async () => {

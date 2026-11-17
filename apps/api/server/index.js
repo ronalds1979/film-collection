@@ -66,13 +66,6 @@ const barcodeUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: imageFileFilter,
 });
-const parseGenreIds = (value) => {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
-    return null;
-  }
-  return [...new Set(value)];
-};
 
 const allowedCorsOrigins = new Set(
   (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:3000,http://127.0.0.1:3000')
@@ -264,9 +257,6 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'film-collection-api' });
 });
 
-// ⚡ Bolt: Reuse a single Intl.Collator instead of calling String.prototype.localeCompare in loops
-const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
-
 app.get('/api/summary', async (_req, res, next) => {
   try {
     // ⚡ Bolt: Compute all dashboard counts in a single SQLite round-trip instead of 4 separate queries
@@ -299,7 +289,7 @@ app.get('/api/genres', async (_req, res) => {
       await seedGenres();
       cachedGenres = await prisma.genre.findMany({ orderBy: { id: 'asc' } });
     }
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Cache-Control', apiAuthToken ? 'private, max-age=300' : 'public, max-age=300');
     res.json(cachedGenres);
   } catch (error) {
     console.error('Failed to load film genres.', error);

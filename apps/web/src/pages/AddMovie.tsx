@@ -555,6 +555,8 @@ export function AddMoviePage() {
   const applyMetadata = (result: SearchResult, resultKey?: string) => {
     const year = result.release_date || result.releaseDate || '';
     const parsedYear = year ? String(year).slice(0, 4) : '';
+    const safeImdbId = result.imdb_id && /^tt\d{1,12}$/i.test(result.imdb_id) ? result.imdb_id : null;
+    const safeTmdbNumericId = result.id && /^\d+$/.test(String(result.id)) ? String(result.id) : null;
 
     setForm((current) => ({
       ...current,
@@ -563,14 +565,14 @@ export function AddMoviePage() {
       releaseYear: parsedYear || current.releaseYear,
       releaseDate: year || current.releaseDate,
       synopsis: result.overview || current.synopsis,
-      imdbId: result.imdb_id || current.imdbId,
-      tmdbId: result.tmdbId || (result.id ? String(result.id) : current.tmdbId),
-      imdbUrl: result.imdb_id ? `https://www.imdb.com/title/${result.imdb_id}/` : current.imdbUrl,
-      tmdbUrl: result.tmdbUrl || (result.id ? `https://www.themoviedb.org/movie/${result.id}` : current.tmdbUrl),
+      imdbId: safeImdbId || current.imdbId,
+      tmdbId: result.tmdbId || safeTmdbNumericId || current.tmdbId,
+      imdbUrl: safeImdbId ? `https://www.imdb.com/title/${safeImdbId}/` : current.imdbUrl,
+      tmdbUrl: result.tmdbUrl || (safeTmdbNumericId ? `https://www.themoviedb.org/movie/${safeTmdbNumericId}` : current.tmdbUrl),
       posterPath: result.poster_path && result.poster_path !== 'N/A'
         ? result.poster_path.startsWith('http')
           ? result.poster_path
-          : result.poster_path.startsWith('/')
+          : result.poster_path.startsWith('/') && !result.poster_path.startsWith('//')
             ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
             : current.posterPath
         : current.posterPath,

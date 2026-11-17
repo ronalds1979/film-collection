@@ -38,8 +38,8 @@ export const verifyUploadedCoversExist = async (payload, fields) => {
       return `${field} must reference an uploaded cover image.`;
     }
     checks.push(
-      fs.promises.stat(resolved).then(
-        (stat) => (stat.isFile() ? null : `${field} references a missing uploaded cover image.`),
+      fs.promises.lstat(resolved).then(
+        (stat) => (stat.isFile() && !stat.isSymbolicLink() ? null : `${field} references a missing uploaded cover image.`),
         () => `${field} references a missing uploaded cover image.`,
       ),
     );
@@ -119,8 +119,8 @@ export const cleanupOrphanedUploads = async (maxAgeMs = 24 * 60 * 60 * 1000) => 
     jpgEntries.map(async (entry) => {
       const fullPath = path.join(uploadsDir, entry.name);
       try {
-        const stat = await fs.promises.stat(fullPath);
-        if (stat.mtimeMs < cutoffMs) {
+        const stat = await fs.promises.lstat(fullPath);
+        if (stat.isFile() && !stat.isSymbolicLink() && stat.mtimeMs < cutoffMs) {
           return { fullPath, uploadPath: `/uploads/${entry.name}` };
         }
       } catch {
