@@ -137,7 +137,7 @@ export function DashboardPage() {
           <Grid item xs={12} md={8}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                   Intake workflow
                 </Typography>
                 <Button component={RouterLink} to="/add-movie" variant="outlined" size="small">
@@ -167,7 +167,7 @@ export function DashboardPage() {
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                   Movies A-Z
                 </Typography>
                 <Button component={RouterLink} to="/collection" size="small">

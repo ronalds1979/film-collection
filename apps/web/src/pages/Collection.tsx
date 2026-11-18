@@ -224,6 +224,8 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
 }) {
   const carouselRef = useRef<HTMLDivElement>(null);
   const [renderedCount, setRenderedCount] = useState(INITIAL_CAROUSEL_ITEMS);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   useEffect(() => {
     setRenderedCount(INITIAL_CAROUSEL_ITEMS);
@@ -233,6 +235,19 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
     () => movies.slice(0, renderedCount),
     [movies, renderedCount],
   );
+
+  const updateScrollBounds = () => {
+    const el = carouselRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    updateScrollBounds();
+    window.addEventListener('resize', updateScrollBounds);
+    return () => window.removeEventListener('resize', updateScrollBounds);
+  }, [visibleMovies.length]);
 
   const loadMoreIfNeeded = () => {
     if (renderedCount < movies.length) {
@@ -252,26 +267,32 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
       }}
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography variant="h6" fontWeight={700}>{genre.name}</Typography>
+        <Typography variant="h6" component="h2" fontWeight={700}>{genre.name}</Typography>
         <Stack direction="row">
           <Tooltip title="Scroll left">
-            <IconButton
-              aria-label={`Scroll ${genre.name} movies left`}
-              onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
-            >
-              <ChevronLeftRounded />
-            </IconButton>
+            <span>
+              <IconButton
+                aria-label={`Scroll ${genre.name} movies left`}
+                disabled={!canScrollLeft}
+                onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+              >
+                <ChevronLeftRounded />
+              </IconButton>
+            </span>
           </Tooltip>
           <Tooltip title="Scroll right">
-            <IconButton
-              aria-label={`Scroll ${genre.name} movies right`}
-              onClick={() => {
-                loadMoreIfNeeded();
-                carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' });
-              }}
-            >
-              <ChevronRightRounded />
-            </IconButton>
+            <span>
+              <IconButton
+                aria-label={`Scroll ${genre.name} movies right`}
+                disabled={!canScrollRight}
+                onClick={() => {
+                  loadMoreIfNeeded();
+                  carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' });
+                }}
+              >
+                <ChevronRightRounded />
+              </IconButton>
+            </span>
           </Tooltip>
         </Stack>
       </Stack>
@@ -281,6 +302,7 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
         aria-label={`${genre.name} movies`}
         onScroll={(event) => {
           const el = event.currentTarget;
+          updateScrollBounds();
           if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 400) {
             loadMoreIfNeeded();
           }

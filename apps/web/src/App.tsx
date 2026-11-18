@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useRef } from 'react';
 import { Link as RouterLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
@@ -37,6 +37,7 @@ const navItems = [
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const isFirstRoute = useRef(true);
   const mobileNavValue = location.pathname.startsWith('/add-movie') || location.pathname.startsWith('/edit-movie')
     ? '/add-movie'
     : location.pathname.startsWith('/collection')
@@ -53,6 +54,12 @@ function App() {
     } else {
       document.title = 'Film Collection';
     }
+
+    if (isFirstRoute.current) {
+      isFirstRoute.current = false;
+      return;
+    }
+    document.getElementById('main-content')?.focus({ preventScroll: true });
   }, [location.pathname]);
 
   return (

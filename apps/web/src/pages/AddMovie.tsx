@@ -80,7 +80,11 @@ export function AddMoviePage() {
   const [barcodeScanStatus, setBarcodeScanStatus] = useState<BarcodeScanStatus | null>(null);
   const [isLookingUpMetadata, setIsLookingUpMetadata] = useState(false);
   const [isLoadingMovie, setIsLoadingMovie] = useState(isEditing);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadMovieToken, setReloadMovieToken] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const scanBarcodeInputRef = useRef<HTMLInputElement>(null);
+  const chooseBarcodeInputRef = useRef<HTMLInputElement>(null);
   const [editingEditionId, setEditingEditionId] = useState<number | null>(null);
   const [movieEditions, setMovieEditions] = useState<Edition[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -219,18 +223,19 @@ export function AddMoviePage() {
         });
       } catch (error) {
         if (!cancelled) {
-          setStatusMessage(error instanceof Error ? error.message : 'Could not load this movie for editing.');
+          setLoadError(error instanceof Error ? error.message : 'Could not load this movie for editing.');
         }
       } finally {
         if (!cancelled) setIsLoadingMovie(false);
       }
     };
 
+    setLoadError(null);
     void loadMovieForEdit();
     return () => {
       cancelled = true;
     };
-  }, [isEditing, movieId, searchParams]);
+  }, [isEditing, movieId, searchParams, reloadMovieToken]);
 
   const updateForm = useCallback((field: string, value: string | boolean | string[]) => {
     setForm((current) => (current[field as keyof typeof current] === value ? current : { ...current, [field]: value }));
@@ -642,7 +647,7 @@ export function AddMoviePage() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(isEditing ? `${API_BASE}/movies/${movieId}` : `${API_BASE}/ingest`, {
+      const response = await fetch(isEditing ? `${API_BASE}/movies/${encodeURIComponent(movieId)}` : `${API_BASE}/ingest`, {
         method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -728,10 +733,28 @@ export function AddMoviePage() {
           </Paper>
         )}
 
+        {isEditing && loadError ? (
+          <Alert
+            severity="error"
+            sx={{ mb: 3 }}
+            action={
+              <Stack direction="row" spacing={1}>
+                <Button color="inherit" size="small" onClick={() => setReloadMovieToken((n) => n + 1)}>
+                  Retry
+                </Button>
+                <Button color="inherit" size="small" onClick={() => navigate('/collection')}>
+                  Back to collection
+                </Button>
+              </Stack>
+            }
+          >
+            {loadError}
+          </Alert>
+        ) : (
         <Box component="form" onSubmit={handleSubmit}>
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>1. Identify the movie</Typography>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>1. Identify the movie</Typography>
               {step1Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -802,33 +825,54 @@ export function AddMoviePage() {
               </Grid>
               <Grid item xs={12} md={7}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Button component="label" variant="outlined" disabled={isReadingBarcode} startIcon={isReadingBarcode ? <CircularProgress size={18} /> : <PhotoCamera />} sx={{ flex: 1 }}>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    disabled={isReadingBarcode}
+                    startIcon={isReadingBarcode ? <CircularProgress size={18} /> : <PhotoCamera />}
+                    onClick={() => scanBarcodeInputRef.current?.click()}
+                    sx={{ flex: 1 }}
+                  >
                     {isReadingBarcode ? 'Reading barcode...' : 'Scan barcode'}
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0] || null;
-                        event.currentTarget.value = '';
-                        void handleBarcodeImage(file);
-                      }}
-                    />
                   </Button>
-                  <Button component="label" variant="text" disabled={isReadingBarcode} sx={{ flex: 1 }}>
+                  <input
+                    ref={scanBarcodeInputRef}
+                    hidden
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    disabled={isReadingBarcode}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0] || null;
+                      event.currentTarget.value = '';
+                      void handleBarcodeImage(file);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="text"
+                    disabled={isReadingBarcode}
+                    onClick={() => chooseBarcodeInputRef.current?.click()}
+                    sx={{ flex: 1 }}
+                  >
                     Choose barcode photo
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0] || null;
-                        event.currentTarget.value = '';
-                        void handleBarcodeImage(file);
-                      }}
-                    />
                   </Button>
+                  <input
+                    ref={chooseBarcodeInputRef}
+                    hidden
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    disabled={isReadingBarcode}
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0] || null;
+                      event.currentTarget.value = '';
+                      void handleBarcodeImage(file);
+                    }}
+                  />
                   <Button
                     variant="contained"
                     onClick={() => void handleLookupMetadata()}
@@ -842,18 +886,23 @@ export function AddMoviePage() {
               </Grid>
             </Grid>
             {barcodeScanStatus && (
-              <Alert severity={barcodeScanStatus.severity} sx={{ mt: 2 }}>
+              <Alert
+                role={barcodeScanStatus.severity === 'error' ? 'alert' : 'status'}
+                aria-live={barcodeScanStatus.severity === 'error' ? 'assertive' : 'polite'}
+                severity={barcodeScanStatus.severity}
+                sx={{ mt: 2 }}
+              >
                 {barcodeScanStatus.message}
               </Alert>
             )}
             {statusMessage && (
-              <Alert role="status" aria-live="polite" severity={getStatusSeverity(statusMessage)} sx={{ mt: 2 }}>
+              <Alert severity={getStatusSeverity(statusMessage)} sx={{ mt: 2 }}>
                 {statusMessage}
               </Alert>
             )}
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
-                <Typography variant="subtitle1" fontWeight={700}>Review metadata matches</Typography>
+                <Typography variant="subtitle1" component="h3" fontWeight={700}>Review metadata matches</Typography>
                 {sortedSearchResults.map((result, index) => {
                   const resultKey = `${result.source || 'meta'}-${result.id || result.imdb_id || result.title}-${index}`;
                   const isApplied = appliedResultKey === resultKey;
@@ -895,15 +944,15 @@ export function AddMoviePage() {
 
           <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, background: 'rgba(11,19,33,0.9)' }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>2. Add cover photos</Typography>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>2. Add cover photos</Typography>
               {step2Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              After identifying the movie, capture or choose its front and back cover. Photos are saved with the edition; no text is extracted from them.
+              After identifying the movie, capture or choose its front and back cover. {!isEditing && 'Both covers are required for new entries. '}Photos are saved with the edition; no text is extracted from them.
             </Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <UploadField
-                label="Front cover"
+                label={isEditing ? 'Front cover' : 'Front cover (Required)'}
                 value={frontCover}
                 uploading={uploadingCovers.front}
                 uploaded={Boolean(uploadedCovers.front)}
@@ -915,7 +964,7 @@ export function AddMoviePage() {
                 onRotate={handleFrontCoverRotate}
               />
               <UploadField
-                label="Back cover"
+                label={isEditing ? 'Back cover' : 'Back cover (Required)'}
                 value={backCover}
                 uploading={uploadingCovers.back}
                 uploaded={Boolean(uploadedCovers.back)}
@@ -929,12 +978,12 @@ export function AddMoviePage() {
             </Stack>
           </Paper>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>3. Confirm edition details and save</Typography>
+            <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>3. Confirm edition details and save</Typography>
             {step3Ready && <Chip size="small" color="success" variant="outlined" label="Ready ✓" />}
           </Stack>
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={700}>Movie details</Typography>
+              <Typography variant="subtitle1" component="h3" fontWeight={700}>Movie details</Typography>
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth disabled={!genres.length || Boolean(genreError)}>
@@ -1007,7 +1056,7 @@ export function AddMoviePage() {
               <TextField fullWidth multiline minRows={2} label="Movie notes" value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} />
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 1 }}>Physical edition</Typography>
+              <Typography variant="subtitle1" component="h3" fontWeight={700} sx={{ mt: 1 }}>Physical edition</Typography>
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField fullWidth label="Edition year" type="number" value={form.editionYear} onChange={(event) => updateForm('editionYear', event.target.value)} />
@@ -1194,6 +1243,7 @@ export function AddMoviePage() {
             </Typography>
           )}
         </Box>
+        )}
       </Paper>
 
       <Dialog
