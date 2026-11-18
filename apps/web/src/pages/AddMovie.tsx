@@ -663,6 +663,9 @@ export function AddMoviePage() {
       setStatusMessage('Movie and edition saved to your collection.');
       setForm(emptyMovieForm);
       setUploadedCovers({});
+      setCoverUploadStatus({});
+      setBarcodeScanStatus(null);
+      setAppliedResultKey('');
       setSearchResults([]);
       setFrontCover(null);
       setBackCover(null);
@@ -687,7 +690,7 @@ export function AddMoviePage() {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Paper sx={{ p: { xs: 1.75, sm: 3 }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-        <Typography variant="h4" sx={{ mb: 2, fontWeight: 800 }}>
+        <Typography variant="h4" component="h1" sx={{ mb: 2, fontWeight: 800 }}>
           {isEditing ? `Edit ${form.title || 'movie'}` : 'Capture and catalog a physical movie'}
         </Typography>
         <Alert severity="info" sx={{ mb: 3 }}>
@@ -757,7 +760,24 @@ export function AddMoviePage() {
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField fullWidth label="Original title" value={form.originalTitle} onChange={(event) => updateForm('originalTitle', event.target.value)} onKeyDown={handleIdentificationKeyDown} />
+                <TextField
+                  fullWidth
+                  label="Original title"
+                  value={form.originalTitle}
+                  onChange={(event) => updateForm('originalTitle', event.target.value)}
+                  onKeyDown={handleIdentificationKeyDown}
+                  InputProps={{
+                    endAdornment: form.originalTitle ? (
+                      <InputAdornment position="end">
+                        <Tooltip title="Clear original title">
+                          <IconButton aria-label="Clear original title" onClick={() => updateForm('originalTitle', '')} edge="end" size="small">
+                            <ClearRounded fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
+                />
               </Grid>
               <Grid item xs={12} md={5}>
                 <TextField
@@ -1000,8 +1020,8 @@ export function AddMoviePage() {
             </Grid>
             <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Format</InputLabel>
-                <Select label="Format" value={form.formatId} onChange={(event) => updateForm('formatId', event.target.value)}>
+                <InputLabel id="add-movie-format-label">Format</InputLabel>
+                <Select labelId="add-movie-format-label" id="add-movie-format-select" label="Format" value={form.formatId} onChange={(event) => updateForm('formatId', event.target.value)}>
                   {formatOptions.map((option) => (
                     <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
                   ))}
@@ -1010,8 +1030,8 @@ export function AddMoviePage() {
             </Grid>
             <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Edition type</InputLabel>
-                <Select label="Edition type" value={form.editionTypeId} onChange={(event) => updateForm('editionTypeId', event.target.value)}>
+                <InputLabel id="add-movie-edition-type-label">Edition type</InputLabel>
+                <Select labelId="add-movie-edition-type-label" id="add-movie-edition-type-select" label="Edition type" value={form.editionTypeId} onChange={(event) => updateForm('editionTypeId', event.target.value)}>
                   {editionTypeOptions.map((option) => (
                     <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
                   ))}
@@ -1020,8 +1040,8 @@ export function AddMoviePage() {
             </Grid>
             <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Watched status</InputLabel>
-                <Select label="Watched status" value={form.watchedStatus} onChange={(event) => updateForm('watchedStatus', event.target.value)}>
+                <InputLabel id="add-movie-watched-label">Watched status</InputLabel>
+                <Select labelId="add-movie-watched-label" id="add-movie-watched-select" label="Watched status" value={form.watchedStatus} onChange={(event) => updateForm('watchedStatus', event.target.value)}>
                   {watchedOptions.map((option) => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
                   ))}
@@ -1124,13 +1144,25 @@ export function AddMoviePage() {
                 value={form.watchedDate}
                 onChange={(event) => updateForm('watchedDate', event.target.value)}
               />
-              {!form.watchedDate && (
+              {!form.watchedDate ? (
                 <Button
                   size="small"
-                  onClick={() => updateForm('watchedDate', new Date().toISOString().slice(0, 10))}
+                  onClick={() => {
+                    const now = new Date();
+                    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    updateForm('watchedDate', localDate);
+                  }}
                   sx={{ mt: 0.5 }}
                 >
                   Set to today
+                </Button>
+              ) : (
+                <Button
+                  size="small"
+                  onClick={() => updateForm('watchedDate', '')}
+                  sx={{ mt: 0.5 }}
+                >
+                  Clear date
                 </Button>
               )}
             </Grid>
@@ -1150,6 +1182,17 @@ export function AddMoviePage() {
               ? <Button variant="outlined" size="large" onClick={() => navigate('/collection')}>Cancel</Button>
               : <Button variant="outlined" size="large" onClick={() => setConfirmResetOpen(true)}>Reset form</Button>}
           </Stack>
+          {(uploadingCovers.front || uploadingCovers.back || rotatingCovers.front || rotatingCovers.back || !genres.length) && !isSaving && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              {uploadingCovers.front || uploadingCovers.back
+                ? 'Wait for cover photo uploads to finish before saving.'
+                : rotatingCovers.front || rotatingCovers.back
+                  ? 'Wait for cover rotation to finish before saving.'
+                  : genreError
+                    ? 'Genres could not be loaded; saving is unavailable.'
+                    : 'Loading genres before saving is enabled...'}
+            </Typography>
+          )}
         </Box>
       </Paper>
 

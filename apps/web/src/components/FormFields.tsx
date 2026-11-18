@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
@@ -89,14 +89,50 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
   onRotate: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const captureInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const busy = uploading || rotating;
   return (
     <Box sx={{ minWidth: { xs: '100%', md: 220 }, flex: 1 }}>
       <Stack spacing={1}>
+        <input
+          ref={captureInputRef}
+          hidden
+          type="file"
+          accept="image/*"
+          capture="environment"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0] || null;
+            event.currentTarget.value = '';
+            if (file) {
+              setDropError(null);
+              onChange(file);
+            }
+          }}
+        />
+        <input
+          ref={galleryInputRef}
+          hidden
+          type="file"
+          accept="image/*"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0] || null;
+            event.currentTarget.value = '';
+            if (file) {
+              setDropError(null);
+              onChange(file);
+            }
+          }}
+        />
         <Button
-          component="label"
           variant="outlined"
           disabled={busy}
+          onClick={() => captureInputRef.current?.click()}
           onDragEnter={(event) => {
             event.preventDefault();
             if (!busy) setIsDragging(true);
@@ -114,8 +150,12 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
             setIsDragging(false);
             if (busy) return;
             const file = event.dataTransfer.files?.[0] || null;
-            if (file && file.type.startsWith('image/')) {
+            if (!file) return;
+            if (file.type.startsWith('image/')) {
+              setDropError(null);
               onChange(file);
+            } else {
+              setDropError(`"${file.name}" is not a supported image file.`);
             }
           }}
           sx={{
@@ -128,40 +168,21 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
           }}
           startIcon={busy ? <CircularProgress size={18} /> : <PhotoCamera />}
         >
-          {uploading ? `Preparing ${label.toLowerCase()}...` : rotating ? `Rotating ${label.toLowerCase()}...` : `Capture ${label.toLowerCase()}`}
-          <input
-            hidden
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0] || null;
-              event.currentTarget.value = '';
-              if (file) {
-                onChange(file);
-              }
-            }}
-          />
+          {isDragging
+            ? `Drop ${label.toLowerCase()} here`
+            : uploading
+              ? `Preparing ${label.toLowerCase()}...`
+              : rotating
+                ? `Rotating ${label.toLowerCase()}...`
+                : `Capture ${label.toLowerCase()}`}
         </Button>
         <Button
-          component="label"
           variant="text"
           disabled={busy}
+          onClick={() => galleryInputRef.current?.click()}
           sx={{ width: '100%' }}
         >
           Choose {label.toLowerCase()} from photos
-          <input
-            hidden
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0] || null;
-              event.currentTarget.value = '';
-              if (file) {
-                onChange(file);
-              }
-            }}
-          />
         </Button>
       </Stack>
       {value && !uploading && (
@@ -172,8 +193,13 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
       <Typography variant="caption" color={uploaded ? 'success.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.75, textAlign: 'center' }}>
         {uploading ? 'Preparing and saving the photo...' : uploaded ? 'Saved on the catalog server · ready to include' : 'Capture, choose, or drag & drop a photo to include with this edition'}
       </Typography>
+      {dropError && (
+        <Alert severity="error" role="alert" sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}>
+          {dropError}
+        </Alert>
+      )}
       {uploadStatus && (
-        <Alert severity={uploadStatus.severity} sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}>
+        <Alert severity={uploadStatus.severity} role="status" aria-live="polite" sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}>
           {uploadStatus.message}
         </Alert>
       )}

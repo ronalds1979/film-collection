@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItemButton, ListItemText, MenuItem, Paper, Select, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardActions, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, Grid, IconButton, InputAdornment, InputLabel, List, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Select, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Alert } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import AlbumRounded from '@mui/icons-material/AlbumRounded';
@@ -17,6 +17,7 @@ function StatCard({ title, value, subtitle, icon, to, isLoading }: { title: stri
       <Paper
         component={RouterLink}
         to={to}
+        aria-label={`${title}: ${isLoading ? 'Loading' : value} — ${subtitle}`}
         sx={{
           p: { xs: 1.25, sm: 2.5 },
           borderRadius: 3,
@@ -104,7 +105,7 @@ export function DashboardPage() {
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, sm: 4 }, px: { xs: 1.5, sm: 3 } }}>
       <Stack spacing={3}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 800 }}>
             Collection overview
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -152,14 +153,12 @@ export function DashboardPage() {
                   { title: 'Enter physical-edition details', detail: 'Format, region, condition, and shelf' },
                   { title: 'Save the completed edition', detail: 'Add it to your catalog' },
                 ].map((step, index) => (
-                  <ListItemButton
+                  <ListItem
                     key={step.title}
-                    component={RouterLink}
-                    to="/add-movie"
                     sx={{ borderRadius: 1.5, borderBottom: index === 5 ? undefined : '1px solid rgba(255,255,255,0.08)' }}
                   >
                     <ListItemText primary={`${index + 1}. ${step.title}`} secondary={step.detail} />
-                  </ListItemButton>
+                  </ListItem>
                 ))}
               </List>
             </Paper>
@@ -200,12 +199,16 @@ export function DashboardPage() {
                       <Box sx={{ minWidth: 0 }}>
                         <Typography fontWeight={700} noWrap>{movie.alternativeTitle || movie.title}</Typography>
                         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-                          {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus || 'unwatched'}
+                          {movie.title}{movie.releaseYear ? ` · ${movie.releaseYear}` : ''} · {movie.watchedStatus ? `${movie.watchedStatus.charAt(0).toUpperCase()}${movie.watchedStatus.slice(1)}` : 'Unwatched'}
                         </Typography>
                       </Box>
                       <ChevronRightRounded sx={{ color: 'text.secondary', flexShrink: 0 }} />
                     </ListItemButton>
                   ))
+                ) : loadError ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Catalog preview unavailable while offline.
+                  </Typography>
                 ) : (
                   <Stack spacing={1.5} alignItems="flex-start">
                     <Typography variant="body2" color="text.secondary">

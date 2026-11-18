@@ -30,6 +30,7 @@ export type Movie = {
   genres?: Genre[];
   editions?: Edition[];
   _searchText?: string;
+  _genresText?: string;
 };
 
 export type Genre = {

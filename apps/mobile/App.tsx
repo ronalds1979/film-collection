@@ -168,6 +168,16 @@ export default function App() {
           </View>
         </View>
 
+        <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: totalCount, now: completedCount }}>
+          <View style={[styles.progressFill, { width: `${totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%` }]} />
+        </View>
+
+        {totalCount > 0 && completedCount === totalCount && (
+          <View style={styles.completionBanner} accessibilityLiveRegion="polite">
+            <Text style={styles.completionBannerText}>All steps complete — ready to save to your catalog.</Text>
+          </View>
+        )}
+
         <View style={styles.cardList}>
           {activeCards.map((item) => {
             const stepKey = `${activeTab}-${item.step}`;
@@ -302,10 +312,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#8ab4ff',
   },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#66bb6a',
+  },
+  completionBanner: {
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(102, 187, 106, 0.45)',
+    backgroundColor: 'rgba(102, 187, 106, 0.14)',
+  },
+  completionBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#a5d6a7',
+  },
   resetButton: {
-    minHeight: 32,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(138, 180, 255, 0.35)',

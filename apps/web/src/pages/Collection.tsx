@@ -106,7 +106,7 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
                   {movie.watchedDate ? ` · Watched: ${movie.watchedDate}` : ''}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-                  {(movie.genres || []).map((genre) => genre.name).join(', ') || 'No genre'}
+                  {(movie._genresText ?? (movie.genres || []).map((genre) => genre.name).join(', ')) || 'No genre'}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
                   {edition
@@ -152,10 +152,10 @@ const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
         scrollSnapAlign: 'start',
         background: '#101b2d',
         transition: 'transform 180ms ease, box-shadow 180ms ease',
-        '&:hover': { transform: 'scale(1.04)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)' },
+        '&:hover, &:focus-within': { transform: 'scale(1.04)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)' },
         '@media (prefers-reduced-motion: reduce)': {
           transition: 'none',
-          '&:hover': { transform: 'none' },
+          '&:hover, &:focus-within': { transform: 'none' },
         },
       }}
     >
@@ -201,11 +201,13 @@ const MoviePosterCard = memo(function MoviePosterCard({ movie, onSelect }: {
           </Box>
         )}
         <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.5 } }}>
-          <Typography fontWeight={700} noWrap title={movie.alternativeTitle || movie.title}>
-            {movie.alternativeTitle || movie.title}
-          </Typography>
+          <Tooltip title={movie.alternativeTitle || movie.title}>
+            <Typography fontWeight={700} noWrap>
+              {movie.alternativeTitle || movie.title}
+            </Typography>
+          </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
-            {movie.releaseYear || 'Year unavailable'} · {movie.genres?.map((genre) => genre.name).join(', ') || 'Unclassified'}
+            {movie.releaseYear || 'Year unavailable'} · {(movie._genresText ?? movie.genres?.map((genre) => genre.name).join(', ')) || 'Unclassified'}
           </Typography>
         </CardContent>
       </Button>
@@ -302,6 +304,140 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
   );
 });
 
+const CollectionTableRow = memo(function CollectionTableRow({ movie, edition, onSelect }: {
+  movie: Movie;
+  edition?: Edition;
+  onSelect: (movie: Movie, edition?: Edition) => void;
+}) {
+  const displayTitle = movie.alternativeTitle || movie.title;
+  const status = movie.watchedStatus || 'unwatched';
+  const formattedStatus = `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+  const statusLabel = movie.favorite ? `Favorite · ${formattedStatus}` : formattedStatus;
+  const genreNames = movie._genresText ?? (movie.genres || []).map((genre) => genre.name).join(', ');
+
+  return (
+    <TableRow
+      hover
+      onClick={() => onSelect(movie, edition)}
+      sx={{ cursor: 'pointer' }}
+    >
+      <TableCell>
+        <Typography fontWeight={700}>{displayTitle}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {[movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable'}
+        </Typography>
+      </TableCell>
+      <TableCell>{genreNames || '—'}</TableCell>
+      <TableCell>{movie.releaseYear || '—'}</TableCell>
+      <TableCell>{edition ? `${formatLabel(edition.formatId)} · ${edition.editionYear || 'Year n/a'}` : 'No edition'}</TableCell>
+      <TableCell sx={{ fontFamily: edition?.barcode ? 'monospace' : undefined }}>{edition?.barcode || '—'}</TableCell>
+      <TableCell>
+        {statusLabel}
+        {movie.watchedDate ? ` · ${movie.watchedDate}` : ''}
+      </TableCell>
+      <TableCell align="right">
+        <Button
+          size="small"
+          startIcon={<EditRounded />}
+          aria-label={`Edit ${displayTitle}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(movie, edition);
+          }}
+        >
+          Edit
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+// ⚡ Bolt: Memoize desktop table so synchronous searchTerm keystrokes don't re-render all visible MUI TableRows
+const CollectionTable = memo(function CollectionTable({ rows, isLoading, loadError, onRetry, onSelect, hasActiveFilters, onClearFilters, collectionView }: {
+  rows: Array<{ movie: Movie; edition?: Edition }>;
+  isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
+  onSelect: (movie: Movie, edition?: Edition) => void;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+  collectionView: string;
+}) {
+  return (
+    <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
+      <Table aria-label="Collection movies table">
+        <TableHead>
+          <TableRow>
+            <TableCell>Movie</TableCell>
+            <TableCell>Genre</TableCell>
+            <TableCell>Year</TableCell>
+            <TableCell>Edition</TableCell>
+            <TableCell>Barcode</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Action</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {isLoading && (
+            <TableRow>
+              <TableCell colSpan={7} align="center">
+                <Stack direction="row" justifyContent="center" alignItems="center" spacing={1} role="status" aria-live="polite">
+                  <CircularProgress size={18} />
+                  <span>Loading your collection...</span>
+                </Stack>
+              </TableCell>
+            </TableRow>
+          )}
+          {loadError && (
+            <TableRow>
+              <TableCell colSpan={7}>
+                <Alert
+                  severity="error"
+                  action={
+                    <Button color="inherit" size="small" onClick={onRetry}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  {loadError}
+                </Alert>
+              </TableCell>
+            </TableRow>
+          )}
+          {rows.map(({ movie, edition }) => (
+            <CollectionTableRow
+              key={`${movie.id}-${edition?.id || 'movie'}`}
+              movie={movie}
+              edition={edition}
+              onSelect={onSelect}
+            />
+          ))}
+          {!isLoading && !loadError && !rows.length && (() => {
+            const emptyCopy = getEmptyStateCopy(collectionView, hasActiveFilters);
+            return (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography color="text.secondary" sx={{ mb: hasActiveFilters || emptyCopy.showAddCta ? 2 : 0 }}>{emptyCopy.message}</Typography>
+                  {hasActiveFilters && (
+                    <Button variant="outlined" size="small" onClick={onClearFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                  {!hasActiveFilters && emptyCopy.showAddCta && (
+                    <Button component={RouterLink} to="/add-movie" variant="contained" size="small">
+                      Add movie
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })()}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+});
+
 const COLLECTION_PAGE_SIZE = 60;
 
 export function CollectionPage() {
@@ -382,6 +518,7 @@ export function CollectionPage() {
               .filter(Boolean)
               .join('\0')
               .toLowerCase(),
+            _genresText: (movie.genres || []).map((genre) => genre.name).join(', '),
           }))
           .sort((left, right) => baseCollator.compare(
             left.alternativeTitle || left.title,
@@ -474,6 +611,9 @@ export function CollectionPage() {
     setStatusFilter('all');
     setGenreFilter('all');
   }, []);
+  const handleRetry = useCallback(() => {
+    setReloadToken((n) => n + 1);
+  }, []);
   const visibleRows = useMemo(
     () => displayedRows.slice(0, visibleCount),
     [displayedRows, visibleCount],
@@ -526,7 +666,7 @@ export function CollectionPage() {
       <Stack spacing={3}>
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800 }}>Collection library</Typography>
+            <Typography variant="h4" component="h1" sx={{ fontWeight: 800 }}>Collection library</Typography>
             <Typography variant="body2" color="text.secondary">
               {displayMode === 'carousel'
                 ? 'Browse cover art by genre. Select a movie to open its details.'
@@ -567,8 +707,8 @@ export function CollectionPage() {
               }}
             />
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
-              <InputLabel>Watched status</InputLabel>
-              <Select label="Watched status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <InputLabel id="collection-status-label">Watched status</InputLabel>
+              <Select labelId="collection-status-label" id="collection-status-select" label="Watched status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <MenuItem value="all">All</MenuItem>
                 {watchedOptions.map((option) => (
                   <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -576,8 +716,8 @@ export function CollectionPage() {
               </Select>
             </FormControl>
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }} disabled={!genres.length}>
-              <InputLabel>Genre</InputLabel>
-              <Select label="Genre" value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
+              <InputLabel id="collection-genre-label">Genre</InputLabel>
+              <Select labelId="collection-genre-label" id="collection-genre-select" label="Genre" value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
                 <MenuItem value="all">All genres</MenuItem>
                 {genres.map((genre) => (
                   <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
@@ -585,8 +725,10 @@ export function CollectionPage() {
               </Select>
             </FormControl>
             <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
-              <InputLabel>Show</InputLabel>
+              <InputLabel id="collection-view-label">Show</InputLabel>
               <Select
+                labelId="collection-view-label"
+                id="collection-view-select"
                 label="Show"
                 value={collectionView}
                 onChange={(event) => {
@@ -602,7 +744,7 @@ export function CollectionPage() {
               </Select>
             </FormControl>
             {collectionView !== 'editions' && (
-              <Stack direction="row" spacing={1} sx={{ flexShrink: 0, width: { xs: '100%', md: 'auto' } }}>
+              <Stack direction="row" spacing={1} role="group" aria-label="Display mode" sx={{ flexShrink: 0, width: { xs: '100%', md: 'auto' } }}>
                 <Button
                   variant={displayMode === 'table' ? 'contained' : 'outlined'}
                   onClick={() => setDisplayMode('table')}
@@ -626,8 +768,10 @@ export function CollectionPage() {
             <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1} sx={{ mt: 1.5 }}>
               <Typography variant="caption" color="text.secondary" role="status" aria-live="polite">
                 {collectionView === 'editions'
-                  ? `Showing ${displayedRows.length} edition${displayedRows.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching filters' : ''}`
-                  : `Showing ${filteredMovies.length} of ${movies.length} movie${movies.length === 1 ? '' : 's'}`}
+                  ? `Showing ${visibleRows.length} of ${displayedRows.length} edition${displayedRows.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching filters' : ''}`
+                  : displayMode === 'table' && visibleRows.length < filteredMovies.length
+                    ? `Showing ${visibleRows.length} of ${filteredMovies.length} matching movies`
+                    : `Showing ${filteredMovies.length} of ${movies.length} movie${movies.length === 1 ? '' : 's'}`}
               </Typography>
               {hasActiveFilters && (
                 <Button size="small" startIcon={<ClearRounded fontSize="small" />} onClick={clearFilters}>
@@ -636,13 +780,25 @@ export function CollectionPage() {
               )}
             </Stack>
           )}
-          {genreError && <Alert severity="error" sx={{ mt: 2 }}>{genreError}</Alert>}
+          {genreError && (
+            <Alert
+              severity="error"
+              sx={{ mt: 2 }}
+              action={
+                <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
+                  Retry
+                </Button>
+              }
+            >
+              {genreError}
+            </Alert>
+          )}
         </Paper>
 
         {displayMode === 'carousel' && collectionView !== 'editions' ? (
           <Stack spacing={3} aria-label="Movies by genre">
             {isLoading && (
-              <Stack direction="row" justifyContent="center" alignItems="center" spacing={1} sx={{ py: 6 }}>
+              <Stack direction="row" justifyContent="center" alignItems="center" spacing={1} role="status" aria-live="polite" sx={{ py: 6 }}>
                 <CircularProgress size={20} />
                 <Typography color="text.secondary">Loading your collection...</Typography>
               </Stack>
@@ -692,111 +848,22 @@ export function CollectionPage() {
             rows={visibleRows}
             isLoading={isLoading}
             loadError={loadError}
-            onRetry={() => setReloadToken((n) => n + 1)}
+            onRetry={handleRetry}
             onSelect={handleSelectRow}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearFilters}
             collectionView={collectionView}
           />
-          <TableContainer component={Paper} sx={{ display: { xs: 'none', md: 'block' }, borderRadius: 3, background: 'rgba(18,28,46,0.9)' }}>
-          <Table aria-label="Collection movies table">
-            <TableHead>
-              <TableRow>
-                <TableCell>Movie</TableCell>
-                <TableCell>Genre</TableCell>
-                <TableCell>Year</TableCell>
-                <TableCell>Edition</TableCell>
-                <TableCell>Barcode</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={1}>
-                      <CircularProgress size={18} />
-                      <span>Loading your collection...</span>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              )}
-              {loadError && (
-                <TableRow>
-                  <TableCell colSpan={7}>
-                    <Alert
-                      severity="error"
-                      action={
-                        <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
-                          Retry
-                        </Button>
-                      }
-                    >
-                      {loadError}
-                    </Alert>
-                  </TableCell>
-                </TableRow>
-              )}
-              {visibleRows.map(({ movie, edition }) => (
-                <TableRow
-                  key={`${movie.id}-${edition?.id || 'movie'}`}
-                  hover
-                  onClick={() => navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell>
-                    <Typography fontWeight={700}>{movie.alternativeTitle || movie.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {[movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{(movie.genres || []).map((genre) => genre.name).join(', ') || '—'}</TableCell>
-                  <TableCell>{movie.releaseYear || '—'}</TableCell>
-                  <TableCell>{edition ? `${formatLabel(edition.formatId)} · ${edition.editionYear || 'Year n/a'}` : 'No edition'}</TableCell>
-                  <TableCell>{edition?.barcode || '—'}</TableCell>
-                  <TableCell>
-                    {movie.favorite ? `Favorite · ${movie.watchedStatus || 'unwatched'}` : movie.watchedStatus || 'unwatched'}
-                    {movie.watchedDate ? ` · ${movie.watchedDate}` : ''}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      startIcon={<EditRounded />}
-                      aria-label={`Edit ${movie.alternativeTitle || movie.title}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(`/edit-movie/${movie.id}${edition ? `?editionId=${edition.id}` : ''}`);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && !loadError && !displayedRows.length && (() => {
-                const emptyCopy = getEmptyStateCopy(collectionView, hasActiveFilters);
-                return (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      <Typography color="text.secondary" sx={{ mb: hasActiveFilters || emptyCopy.showAddCta ? 2 : 0 }}>{emptyCopy.message}</Typography>
-                      {hasActiveFilters && (
-                        <Button variant="outlined" size="small" onClick={clearFilters}>
-                          Clear filters
-                        </Button>
-                      )}
-                      {!hasActiveFilters && emptyCopy.showAddCta && (
-                        <Button component={RouterLink} to="/add-movie" variant="contained" size="small">
-                          Add movie
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })()}
-            </TableBody>
-          </Table>
-          </TableContainer>
+          <CollectionTable
+            rows={visibleRows}
+            isLoading={isLoading}
+            loadError={loadError}
+            onRetry={handleRetry}
+            onSelect={handleSelectRow}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
+            collectionView={collectionView}
+          />
           {displayedRows.length > visibleCount && (
             <Stack alignItems="center" sx={{ pt: 1 }}>
               <Button variant="outlined" onClick={() => setVisibleCount((prev) => prev + COLLECTION_PAGE_SIZE)}>

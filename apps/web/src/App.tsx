@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Link as RouterLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
@@ -22,7 +22,7 @@ const CollectionPage = lazy(() => import('./pages/Collection').then((module) => 
 
 function PageFallback() {
   return (
-    <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '40vh' }}>
+    <Box role="status" aria-label="Loading page" sx={{ display: 'grid', placeItems: 'center', minHeight: '40vh' }}>
       <CircularProgress size={28} />
     </Box>
   );
@@ -42,6 +42,18 @@ function App() {
     : location.pathname.startsWith('/collection')
       ? '/collection'
       : '/';
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/edit-movie')) {
+      document.title = 'Edit Movie — Film Collection';
+    } else if (location.pathname.startsWith('/add-movie')) {
+      document.title = 'Add Movie — Film Collection';
+    } else if (location.pathname.startsWith('/collection')) {
+      document.title = 'Collection — Film Collection';
+    } else {
+      document.title = 'Film Collection';
+    }
+  }, [location.pathname]);
 
   return (
     <Box sx={{ minHeight: '100vh', pb: { xs: 'calc(68px + env(safe-area-inset-bottom))', md: 0 }, background: 'linear-gradient(180deg, #0c1628 0%, #0d1b2d 100%)', color: '#edf4ff' }}>
@@ -66,7 +78,19 @@ function App() {
       </Box>
       <AppBar position="sticky" sx={{ top: 0, backdropFilter: 'blur(8px)', background: 'rgba(12,22,40,0.92)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 2, sm: 3 } }}>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
+          <Typography
+            variant="h6"
+            component={RouterLink}
+            to="/"
+            sx={{
+              flexGrow: 1,
+              fontWeight: 700,
+              fontSize: { xs: '1.1rem', sm: '1.25rem' },
+              color: 'inherit',
+              textDecoration: 'none',
+              '&:focus-visible': { outline: '2px solid #8ab4ff', outlineOffset: 4, borderRadius: 1 },
+            }}
+          >
             Film Collection
           </Typography>
           <Stack component="nav" aria-label="Primary navigation" direction="row" spacing={0.5} sx={{ display: { xs: 'none', md: 'flex' } }}>
@@ -108,6 +132,8 @@ function App() {
       </Box>
 
       <BottomNavigation
+        component="nav"
+        aria-label="Mobile navigation"
         showLabels
         value={mobileNavValue}
         onChange={(_event, value: string) => navigate(value)}
@@ -127,9 +153,9 @@ function App() {
           '& .Mui-selected': { color: '#8ab4ff' },
         }}
       >
-        <BottomNavigationAction label="Home" value="/" icon={<HomeRounded />} />
-        <BottomNavigationAction label="Add movie" value="/add-movie" icon={<AddCircleOutlineRounded />} />
-        <BottomNavigationAction label="Collection" value="/collection" icon={<MovieRounded />} />
+        <BottomNavigationAction label="Home" value="/" icon={<HomeRounded />} aria-current={mobileNavValue === '/' ? 'page' : undefined} />
+        <BottomNavigationAction label="Add movie" value="/add-movie" icon={<AddCircleOutlineRounded />} aria-current={mobileNavValue === '/add-movie' ? 'page' : undefined} />
+        <BottomNavigationAction label="Collection" value="/collection" icon={<MovieRounded />} aria-current={mobileNavValue === '/collection' ? 'page' : undefined} />
       </BottomNavigation>
     </Box>
   );
