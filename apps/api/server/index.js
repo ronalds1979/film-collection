@@ -50,7 +50,9 @@ const imageFileFilter = (_req, file, callback) => {
     callback(null, true);
     return;
   }
-  callback(new Error('Only raster image files are allowed for cover uploads.'));
+  const err = new Error('Only raster image files are allowed for cover uploads.');
+  err.status = 415;
+  callback(err);
 };
 
 // ⚡ Bolt: Keep cover uploads in memory to avoid disk write -> read -> unlink overhead
@@ -74,13 +76,19 @@ const allowedCorsOrigins = new Set(
     .filter(Boolean),
 );
 
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedCorsOrigins.has(origin)) {
       callback(null, true);
       return;
     }
-    callback(new Error('Origin not allowed by CORS policy.'));
+    const err = new Error('Origin not allowed by CORS policy.');
+    err.status = 403;
+    callback(err);
   },
 }));
 app.use(helmet({
@@ -207,7 +215,7 @@ app.use(express.json({ limit: '2mb' }));
 // ⚡ Bolt: Gzip-compress large JSON/text responses (>1 KB) using built-in zlib
 app.use((req, res, next) => {
   const acceptEncoding = req.headers['accept-encoding'] || '';
-  if (!acceptEncoding.includes('gzip')) {
+  if (!/\bgzip\b/i.test(acceptEncoding) || /\bgzip\s*;\s*q=0(?:\.0+)?\b/i.test(acceptEncoding)) {
     next();
     return;
   }

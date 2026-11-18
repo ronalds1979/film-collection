@@ -64,20 +64,25 @@ const isPrivateOrLoopbackHost = (rawHostname) => {
     || host.endsWith('.internal')
     || host === '::1'
     || host === '::'
+    || /^(?:0+:){7}0*[01]$/.test(host)
   ) {
     return true;
   }
-  if (
-    host.includes(':')
-    && (
+  if (host.includes(':')) {
+    if (
       host.startsWith('::ffff:')
       || host.startsWith('fe80:')
       || host.startsWith('fc')
       || host.startsWith('fd')
       || host.startsWith('ff')
-    )
-  ) {
-    return true;
+    ) {
+      return true;
+    }
+    // IPv4-compatible IPv6 (e.g. ::127.0.0.1) or mapped suffix
+    const embeddedIpv4 = host.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (embeddedIpv4) {
+      return isPrivateOrLoopbackHost(embeddedIpv4[1]);
+    }
   }
   const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4Match) {
@@ -134,8 +139,8 @@ const safeUrlSchema = z
   .string()
   .trim()
   .max(2048)
-  .refine((val) => val === '' || isSafeHttpUrl(val), {
-    message: 'URL must use http or https.',
+  .refine((val) => val === '' || isSafeHttpsUrl(val), {
+    message: 'URL must use https.',
   })
   .optional()
   .nullable();
@@ -144,8 +149,8 @@ const safePosterSchema = z
   .string()
   .trim()
   .max(2048)
-  .refine((val) => val === '' || isSafeHttpUrl(val) || SAFE_UPLOAD_PATH_REGEX.test(val), {
-    message: 'posterPath must be an HTTP/HTTPS URL or uploaded image.',
+  .refine((val) => val === '' || isSafeHttpsUrl(val) || SAFE_UPLOAD_PATH_REGEX.test(val), {
+    message: 'posterPath must be an HTTPS URL or uploaded image.',
   })
   .optional()
   .nullable();
