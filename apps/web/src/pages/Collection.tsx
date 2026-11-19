@@ -255,6 +255,12 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
     }
   };
 
+  const scrollBehavior = (): ScrollBehavior => (
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth'
+  );
+
   return (
     <Paper
       sx={{
@@ -274,7 +280,7 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
               <IconButton
                 aria-label={`Scroll ${genre.name} movies left`}
                 disabled={!canScrollLeft}
-                onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}
+                onClick={() => carouselRef.current?.scrollBy({ left: -420, behavior: scrollBehavior() })}
               >
                 <ChevronLeftRounded />
               </IconButton>
@@ -287,7 +293,7 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
                 disabled={!canScrollRight}
                 onClick={() => {
                   loadMoreIfNeeded();
-                  carouselRef.current?.scrollBy({ left: 420, behavior: 'smooth' });
+                  carouselRef.current?.scrollBy({ left: 420, behavior: scrollBehavior() });
                 }}
               >
                 <ChevronRightRounded />
@@ -786,6 +792,19 @@ export function CollectionPage() {
               </Stack>
             )}
           </Stack>
+          {genreError && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 1.5 }}
+              action={
+                <Button color="inherit" size="small" onClick={handleRetry}>
+                  Retry
+                </Button>
+              }
+            >
+              {genreError}
+            </Alert>
+          )}
           {!isLoading && !loadError && (
             <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1} sx={{ mt: 1.5 }}>
               <Typography variant="caption" color="text.secondary" role="status" aria-live="polite">

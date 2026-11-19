@@ -75,7 +75,10 @@ export function AddMoviePage() {
   });
   const [uploadingCovers, setUploadingCovers] = useState<{ front: boolean; back: boolean }>({ front: false, back: false });
   const [coverUploadStatus, setCoverUploadStatus] = useState<{ front?: CoverUploadStatus; back?: CoverUploadStatus }>({});
+  const [lookupStatusMessage, setLookupStatusMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [pendingLeaveTarget, setPendingLeaveTarget] = useState<string | null>(null);
   const [isReadingBarcode, setIsReadingBarcode] = useState(false);
   const [barcodeScanStatus, setBarcodeScanStatus] = useState<BarcodeScanStatus | null>(null);
   const [isLookingUpMetadata, setIsLookingUpMetadata] = useState(false);
@@ -147,7 +150,9 @@ export function AddMoviePage() {
         setBackCover(null);
         setEditingEditionId(null);
         setMovieEditions([]);
+        setLookupStatusMessage(null);
         setStatusMessage(null);
+        setIsDirty(false);
       }
       wasEditingRef.current = false;
       return;
@@ -221,6 +226,9 @@ export function AddMoviePage() {
           ...(edition.frontCoverPath ? { front: coverReference(edition.frontCoverPath) } : {}),
           ...(edition.backCoverPath ? { back: coverReference(edition.backCoverPath) } : {}),
         });
+        setIsDirty(false);
+        setLookupStatusMessage(null);
+        setStatusMessage(null);
       } catch (error) {
         if (!cancelled) {
           setLoadError(error instanceof Error ? error.message : 'Could not load this movie for editing.');
@@ -238,8 +246,20 @@ export function AddMoviePage() {
   }, [isEditing, movieId, searchParams, reloadMovieToken]);
 
   const updateForm = useCallback((field: string, value: string | boolean | string[]) => {
-    setForm((current) => (current[field as keyof typeof current] === value ? current : { ...current, [field]: value }));
+    setForm((current) => {
+      if (current[field as keyof typeof current] === value) return current;
+      setIsDirty(true);
+      return { ...current, [field]: value };
+    });
   }, []);
+
+  const requestNavigation = useCallback((target: string) => {
+    if (isDirty) {
+      setPendingLeaveTarget(target);
+      return;
+    }
+    navigate(target);
+  }, [isDirty, navigate]);
 
   const handleCoverSelected = useCallback(async (slot: 'front' | 'back', file: File | null) => {
     if (!file) {
@@ -327,6 +347,7 @@ export function AddMoviePage() {
         ...current,
         [slot]: savedCover,
       }));
+      setIsDirty(true);
       try {
         await removePendingCover(slot);
       } catch (error) {
@@ -503,13 +524,13 @@ export function AddMoviePage() {
     ].filter(Boolean)));
 
     if (!lookupQueries.length && !barcode) {
-      setStatusMessage('Enter a movie title or barcode before looking up metadata.');
+      setLookupStatusMessage('Enter a movie title or barcode before looking up metadata.');
       return;
     }
 
     setIsLookingUpMetadata(true);
     setAppliedResultKey(null);
-    setStatusMessage(barcode ? 'Looking up this barcode in the catalog and live product metadata...' : 'Searching live TMDb and IMDb-linked metadata...');
+    setLookupStatusMessage(barcode ? 'Looking up this barcode in the catalog and live product metadata...' : 'Searching live TMDb and IMDb-linked metadata...');
 
     try {
       if (barcode) {
@@ -524,12 +545,12 @@ export function AddMoviePage() {
         }
         if (payload.results?.length) {
           setSearchResults(payload.results);
-          setStatusMessage(`${payload.message || `Barcode match found via ${payload.source || 'metadata lookup'}.`} Review a match before applying it.`);
+          setLookupStatusMessage(`${payload.message || `Barcode match found via ${payload.source || 'metadata lookup'}.`} Review a match before applying it.`);
           return;
         }
         if (!lookupQueries.length) {
           setSearchResults([]);
-          setStatusMessage(payload.message || `No metadata match was found for barcode ${barcode}. Enter a movie title to search TMDb and IMDb.`);
+          setLookupStatusMessage(payload.message || `No metadata match was found for barcode ${barcode}. Enter a movie title to search TMDb and IMDb.`);
           return;
         }
       }
@@ -542,16 +563,16 @@ export function AddMoviePage() {
         }
         if (payload.results?.length) {
           setSearchResults(payload.results);
-          setStatusMessage(`Live metadata matches found for “${query}”. Review a match before applying it.`);
+          setLookupStatusMessage(`Live metadata matches found for “${query}”. Review a match before applying it.`);
           return;
         }
       }
 
       setSearchResults([]);
-      setStatusMessage('No live metadata matches were found. Check the barcode or title and try again, or enter the details manually.');
+      setLookupStatusMessage('No live metadata matches were found. Check the barcode or title and try again, or enter the details manually.');
     } catch (error) {
       setSearchResults([]);
-      setStatusMessage(error instanceof Error ? error.message : 'Metadata lookup failed.');
+      setLookupStatusMessage(error instanceof Error ? error.message : 'Metadata lookup failed.');
     } finally {
       setIsLookingUpMetadata(false);
     }
@@ -584,7 +605,8 @@ export function AddMoviePage() {
     }));
 
     setAppliedResultKey(resultKey || null);
-    setStatusMessage(`Metadata from ${result.source || 'source'} applied to the entry.`);
+    setIsDirty(true);
+    setLookupStatusMessage(`Metadata from ${result.source || 'source'} applied to the entry.`);
   };
 
   const handleIdentificationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -605,7 +627,9 @@ export function AddMoviePage() {
     setBarcodeScanStatus(null);
     setSearchResults([]);
     setAppliedResultKey(null);
+    setLookupStatusMessage(null);
     setStatusMessage(null);
+    setIsDirty(false);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -662,10 +686,13 @@ export function AddMoviePage() {
         throw new Error(result.message || (isEditing ? 'Unable to save changes.' : 'Unable to save the movie.'));
       }
       if (isEditing) {
+        setIsDirty(false);
         navigate('/collection');
         return;
       }
       setStatusMessage('Movie and edition saved to your collection.');
+      setLookupStatusMessage(null);
+      setIsDirty(false);
       setForm(emptyMovieForm);
       setUploadedCovers({});
       setCoverUploadStatus({});
@@ -723,7 +750,7 @@ export function AddMoviePage() {
                     aria-current={isCurrent ? 'true' : undefined}
                     onClick={() => {
                       if (!isCurrent) {
-                        navigate(`/edit-movie/${movieId}?editionId=${ed.id}`);
+                        requestNavigation(`/edit-movie/${movieId}?editionId=${ed.id}`);
                       }
                     }}
                   />
@@ -809,6 +836,7 @@ export function AddMoviePage() {
                   value={form.barcode}
                   onChange={(event) => updateForm('barcode', event.target.value)}
                   onKeyDown={handleIdentificationKeyDown}
+                  inputProps={{ inputMode: 'numeric' }}
                   helperText={form.barcode ? (isBarcodeValid ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
                   InputProps={{
                     endAdornment: form.barcode ? (
@@ -895,9 +923,15 @@ export function AddMoviePage() {
                 {barcodeScanStatus.message}
               </Alert>
             )}
-            {statusMessage && (
-              <Alert severity={getStatusSeverity(statusMessage)} sx={{ mt: 2 }}>
-                {statusMessage}
+            {lookupStatusMessage && (
+              <Alert
+                role={getStatusSeverity(lookupStatusMessage) === 'error' ? 'alert' : 'status'}
+                aria-live={getStatusSeverity(lookupStatusMessage) === 'error' ? 'assertive' : 'polite'}
+                severity={getStatusSeverity(lookupStatusMessage)}
+                onClose={() => setLookupStatusMessage(null)}
+                sx={{ mt: 2 }}
+              >
+                {lookupStatusMessage}
               </Alert>
             )}
             {searchResults.length > 0 && (
@@ -1218,7 +1252,13 @@ export function AddMoviePage() {
           </Grid>
 
           {statusMessage && (
-            <Alert role="status" aria-live="polite" severity={getStatusSeverity(statusMessage)} sx={{ mt: 3 }}>
+            <Alert
+              role={getStatusSeverity(statusMessage) === 'error' ? 'alert' : 'status'}
+              aria-live={getStatusSeverity(statusMessage) === 'error' ? 'assertive' : 'polite'}
+              severity={getStatusSeverity(statusMessage)}
+              onClose={() => setStatusMessage(null)}
+              sx={{ mt: 3 }}
+            >
               {statusMessage}
             </Alert>
           )}
@@ -1228,7 +1268,7 @@ export function AddMoviePage() {
               {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Save to collection'}
             </Button>
             {isEditing
-              ? <Button variant="outlined" size="large" onClick={() => navigate('/collection')}>Cancel</Button>
+              ? <Button variant="outlined" size="large" onClick={() => requestNavigation('/collection')}>Cancel</Button>
               : <Button variant="outlined" size="large" onClick={() => setConfirmResetOpen(true)}>Reset form</Button>}
           </Stack>
           {(uploadingCovers.front || uploadingCovers.back || rotatingCovers.front || rotatingCovers.back || !genres.length) && !isSaving && (
@@ -1268,6 +1308,33 @@ export function AddMoviePage() {
             }}
           >
             Reset form
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={Boolean(pendingLeaveTarget)}
+        onClose={() => setPendingLeaveTarget(null)}
+        aria-labelledby="confirm-discard-title"
+      >
+        <DialogTitle id="confirm-discard-title">Discard unsaved changes?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You have unsaved changes on this movie edition. Leaving now will discard them.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingLeaveTarget(null)}>Keep editing</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              const target = pendingLeaveTarget;
+              setPendingLeaveTarget(null);
+              setIsDirty(false);
+              if (target) navigate(target);
+            }}
+          >
+            Discard changes
           </Button>
         </DialogActions>
       </Dialog>
