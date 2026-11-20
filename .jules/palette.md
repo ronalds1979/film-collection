@@ -11,3 +11,7 @@
 ## 2026-11-17 - Drag-and-Drop Cover Upload, Single-Tab Mobile Cards & Search Shortcuts
 **Learning:** Rendering both a clickable `<CardActionArea>` and a separate `<Button>` inside mobile collection cards creates duplicate keyboard tab stops with generic button labels, and load errors without an inline Retry action strand users until they manually reload. Desktop catalog workflows also benefit from drag-and-drop cover zones, `/` or `Ctrl+K` search focus, `Escape` to clear search, step readiness badges, and one-click "Set to today" on watched dates.
 **Action:** Consolidate each mobile card into a single accessible `<CardActionArea>` with a descriptive `aria-label`, add inline `Retry` actions to async error alerts, support drag-and-drop in `UploadField`, wire global search keyboard shortcuts, and turn mobile checklist cards into interactive checkboxes with live completion counts.
+
+## 2026-11-20 - Visual Poster Previews in Metadata Search Results
+**Learning:** `SearchResult` cards in `AddMovie` displayed only text even when `poster_path` and `source` were already returned by the API, making it harder to distinguish remakes or same-title films before applying metadata.
+**Action:** Share `resolvePosterUrl` between metadata result thumbnails and `applyMetadata` so URL validation stays consistent while giving users instant visual confirmation and source context.

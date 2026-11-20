@@ -247,6 +247,20 @@ export const coverReference = (coverPath: string): UploadedCover => ({
   path: coverPath,
 });
 
+/** Resolves a TMDB path, local upload path, or HTTPS/HTTP URL into a displayable poster URL. */
+export function resolvePosterUrl(posterPath?: string | null, tmdbSize: 'w185' | 'w500' = 'w500'): string {
+  if (!posterPath || posterPath === 'N/A') return '';
+  if (posterPath.startsWith('https://') || posterPath.startsWith('http://')) {
+    return posterPath;
+  }
+  if (posterPath.startsWith('/') && !posterPath.startsWith('//')) {
+    return posterPath.startsWith('/uploads/')
+      ? posterPath
+      : `https://image.tmdb.org/t/p/${tmdbSize}${posterPath}`;
+  }
+  return '';
+}
+
 export function isValidRetailBarcode(value: string) {
   // ⚡ Bolt: Avoid array allocations (.split, .map, .reverse, .reduce) by scanning char codes in-place
   const digitsOnly = value.replace(/\s+/g, '');

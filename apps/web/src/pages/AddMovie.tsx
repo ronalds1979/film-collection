@@ -6,7 +6,7 @@ import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
-import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, isValidRetailBarcode, baseCollator } from '../utils/helpers';
+import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
 import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
@@ -95,6 +95,7 @@ export function AddMoviePage() {
   const [genreError, setGenreError] = useState<string | null>(null);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [appliedResultKey, setAppliedResultKey] = useState<string | null>(null);
+  const [failedPosters, setFailedPosters] = useState<Record<string, boolean>>({});
 
   // ⚡ Bolt: Extract inline sort into useMemo to prevent unnecessary array allocations and O(N log N) sorting on every render
   const sortedSearchResults = useMemo(
@@ -530,6 +531,7 @@ export function AddMoviePage() {
 
     setIsLookingUpMetadata(true);
     setAppliedResultKey(null);
+    setFailedPosters({});
     setLookupStatusMessage(barcode ? 'Looking up this barcode in the catalog and live product metadata...' : 'Searching live TMDb and IMDb-linked metadata...');
 
     try {
@@ -595,13 +597,7 @@ export function AddMoviePage() {
       tmdbId: result.tmdbId || safeTmdbNumericId || current.tmdbId,
       imdbUrl: safeImdbId ? `https://www.imdb.com/title/${safeImdbId}/` : current.imdbUrl,
       tmdbUrl: result.tmdbUrl || (safeTmdbNumericId ? `https://www.themoviedb.org/movie/${safeTmdbNumericId}` : current.tmdbUrl),
-      posterPath: result.poster_path && result.poster_path !== 'N/A'
-        ? result.poster_path.startsWith('http')
-          ? result.poster_path
-          : result.poster_path.startsWith('/') && !result.poster_path.startsWith('//')
-            ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
-            : current.posterPath
-        : current.posterPath,
+      posterPath: resolvePosterUrl(result.poster_path, 'w500') || current.posterPath,
     }));
 
     setAppliedResultKey(resultKey || null);
@@ -940,6 +936,7 @@ export function AddMoviePage() {
                 {sortedSearchResults.map((result, index) => {
                   const resultKey = `${result.source || 'meta'}-${result.id || result.imdb_id || result.title}-${index}`;
                   const isApplied = appliedResultKey === resultKey;
+                  const posterUrl = !failedPosters[resultKey] ? resolvePosterUrl(result.poster_path, 'w185') : '';
                   return (
                     <Paper
                       key={resultKey}
@@ -950,16 +947,32 @@ export function AddMoviePage() {
                         border: isApplied ? '1px solid #8ab4ff' : '1px solid rgba(255,255,255,0.06)',
                       }}
                     >
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
-                        <Box>
-                          <Typography fontWeight={700}>{result.title}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                            {result.overview || 'No overview available.'}
-                          </Typography>
-                        </Box>
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+                        <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                          {posterUrl && (
+                            <Box
+                              component="img"
+                              src={posterUrl}
+                              alt={`${result.title} poster`}
+                              loading="lazy"
+                              decoding="async"
+                              onError={() => setFailedPosters((prev) => ({ ...prev, [resultKey]: true }))}
+                              sx={{ width: 56, height: 84, objectFit: 'cover', borderRadius: 1.5, flexShrink: 0, bgcolor: 'rgba(255,255,255,0.06)' }}
+                            />
+                          )}
+                          <Box sx={{ minWidth: 0 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                              <Typography fontWeight={700}>{result.title}</Typography>
+                              {result.source && <Chip size="small" variant="outlined" label={result.source.toUpperCase()} />}
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                              {result.overview || 'No overview available.'}
+                            </Typography>
+                          </Box>
+                        </Stack>
                         <Button
                           variant={isApplied ? 'contained' : 'outlined'}
                           aria-pressed={isApplied}
