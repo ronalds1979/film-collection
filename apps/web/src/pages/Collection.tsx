@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState, useMemo, useRef, useDeferredValue } from 'react';
-import { Box, Button, Card, CardActionArea, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton, useMediaQuery, useTheme } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
@@ -484,6 +484,9 @@ export function CollectionPage() {
   const [visibleCount, setVisibleCount] = useState(COLLECTION_PAGE_SIZE);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  // ⚡ Bolt: Mount only the active viewport representation (table on md+, cards on <md) instead of rendering both
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
   const collectionView = searchParams.get('view') || 'movies';
 
   useEffect(() => {
@@ -885,26 +888,29 @@ export function CollectionPage() {
           </Stack>
         ) : (
         <>
-          <CollectionMobileCards
-            rows={visibleRows}
-            isLoading={isLoading}
-            loadError={loadError}
-            onRetry={handleRetry}
-            onSelect={handleSelectRow}
-            hasActiveFilters={hasActiveFilters}
-            onClearFilters={clearFilters}
-            collectionView={collectionView}
-          />
-          <CollectionTable
-            rows={visibleRows}
-            isLoading={isLoading}
-            loadError={loadError}
-            onRetry={handleRetry}
-            onSelect={handleSelectRow}
-            hasActiveFilters={hasActiveFilters}
-            onClearFilters={clearFilters}
-            collectionView={collectionView}
-          />
+          {isDesktop ? (
+            <CollectionTable
+              rows={visibleRows}
+              isLoading={isLoading}
+              loadError={loadError}
+              onRetry={handleRetry}
+              onSelect={handleSelectRow}
+              hasActiveFilters={hasActiveFilters}
+              onClearFilters={clearFilters}
+              collectionView={collectionView}
+            />
+          ) : (
+            <CollectionMobileCards
+              rows={visibleRows}
+              isLoading={isLoading}
+              loadError={loadError}
+              onRetry={handleRetry}
+              onSelect={handleSelectRow}
+              hasActiveFilters={hasActiveFilters}
+              onClearFilters={clearFilters}
+              collectionView={collectionView}
+            />
+          )}
           {displayedRows.length > visibleCount && (
             <Stack alignItems="center" sx={{ pt: 1 }}>
               <Button variant="outlined" onClick={() => setVisibleCount((prev) => prev + COLLECTION_PAGE_SIZE)}>

@@ -35,3 +35,7 @@
 ## 2026-11-17 - Pre-sorted Fetch Payloads, Memoized Form Controls & Batched Cleanup
 **Learning:** Re-sorting movies and editions inside `useMemo` on every filter/search change and keeping un-memoized `Autocomplete` fields inside a large form page causes unnecessary work on every keystroke. On the backend, sequential `stat` / DB reference checks during upload cleanup add serial I/O latency, and testing 90°/270° strided transposes before 180° linear reversal wastes cache lines during upside-down barcode scans.
 **Action:** Pre-sort fetched movies/editions and pre-normalize `_searchText` once on fetch in `Collection.tsx`; memoize `FormFields.tsx` components with stabilized callbacks and O(1) lookup maps; batch DB/filesystem cleanup operations in `index.js`; test `[0, 180, 90, 270]` in `ocr.js`; and sync `upcCache` / `Set` lookups in `movieController.js`.
+
+## 2026-11-20 - Avoid Mounting Dual Responsive Views Hidden via CSS
+**Learning:** Rendering both `CollectionTable` and `CollectionMobileCards` simultaneously and hiding one via MUI `sx={{ display: { xs: ..., md: ... } }}` doubles React elements, Emotion CSS-in-JS work, and DOM nodes for every visible catalog row.
+**Action:** Use `useMediaQuery(theme.breakpoints.up('md'), { noSsr: true })` to mount only the active viewport representation (desktop table or mobile cards).
