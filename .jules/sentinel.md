@@ -51,3 +51,8 @@
 - Switched `verifyUploadedCoversExist` and `cleanupOrphanedUploads` in `apps/api/server/services/db.js` from `stat` to `lstat` so symbolic links in `uploadsDir` are rejected and never followed.
 - Sanitized external TMDb/OMDb `poster_path`, `backdrop_path`, and `imdb_id` values in `apps/api/server/services/metadata.js` and `apps/web/src/pages/AddMovie.tsx` (blocking protocol-relative `//` poster paths and malformed IDs).
 - Set `Cache-Control: private, max-age=300` on `/api/genres` when `API_AUTH_TOKEN` is configured, removed unused helpers in `apps/api/server/index.js`, and expanded `tests/controllers/movieController.test.js`.
+
+## 2026-11-20 - IPv6 Hex Normalization Bypass in SSRF Host Validation
+**Vulnerability:** `isPrivateOrLoopbackHost` in `apps/api/server/schemas/movie.js` only checked dotted-quad embedded IPv4 suffixes, missing hex-normalized IPv4-compatible IPv6 addresses (`::7f00:1`, `::a9fe:a9fe`, `::ff`), `fe80::/10` (`fe80`–`febf`), and NAT64 (`64:ff9b::/96`).
+**Learning:** Node's WHATWG `new URL()` parser normalizes IPv4-compatible IPv6 hosts such as `[::127.0.0.1]` to `[::7f00:1]`, silently bypassing dotted-quad regex checks on `parsed.hostname`.
+**Prevention:** Decode compressed two-hextet (`::xxxx:yyyy`) and single-hextet (`::xxxx`) IPv6 hosts back to IPv4 and cover the full `fe80::/10` and `64:ff9b:` ranges in SSRF host validators.

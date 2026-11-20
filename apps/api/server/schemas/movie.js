@@ -71,11 +71,23 @@ const isPrivateOrLoopbackHost = (rawHostname) => {
   if (host.includes(':')) {
     if (
       host.startsWith('::ffff:')
-      || host.startsWith('fe80:')
+      || /^fe[89ab][0-9a-f]:/.test(host)
       || host.startsWith('fc')
       || host.startsWith('fd')
       || host.startsWith('ff')
+      || host.startsWith('64:ff9b:')
+      || host.startsWith('100::')
     ) {
+      return true;
+    }
+    // 🛡️ Sentinel: Node's URL parser normalizes ::127.0.0.1 -> ::7f00:1 and ::0.0.0.255 -> ::ff
+    const ipv4CompatMatch = host.match(/^::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (ipv4CompatMatch) {
+      const hi = parseInt(ipv4CompatMatch[1], 16);
+      const lo = parseInt(ipv4CompatMatch[2], 16);
+      return isPrivateOrLoopbackHost(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
+    }
+    if (/^::[0-9a-f]{1,4}$/.test(host)) {
       return true;
     }
     // IPv4-compatible IPv6 (e.g. ::127.0.0.1) or mapped suffix

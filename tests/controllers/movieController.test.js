@@ -68,6 +68,12 @@ test('URL validation blocks loopback, private ranges, credentials, and non-HTTPS
     'http://printer.local/status',
     'http://[::1]:8080/',
     'http://[::ffff:127.0.0.1]/',
+    'https://[::127.0.0.1]/',
+    'https://[::169.254.169.254]/',
+    'https://[::7f00:1]/',
+    'https://[::0.0.0.255]/',
+    'https://[fe90::1]/',
+    'https://[64:ff9b::127.0.0.1]/',
     'http://[ff02::1]/',
     'https://user:pass@example.com/poster.jpg',
     'javascript:alert(1)',
@@ -76,8 +82,9 @@ test('URL validation blocks loopback, private ranges, credentials, and non-HTTPS
     assert.equal(isSafeHttpsUrl(unsafeUrl), false, `Expected isSafeHttpsUrl to reject ${unsafeUrl}`);
   }
 
-  // Ensure normal domains starting with fc/fd/ff are not falsely blocked as IPv6 prefixes
+  // Ensure normal domains starting with fc/fd/ff and public IPv6 addresses are not falsely blocked
   assert.equal(isSafeHttpsUrl('https://ff.example.com/poster.jpg'), true);
+  assert.equal(isSafeHttpsUrl('https://[2606:4700:4700::1111]/poster.jpg'), true);
 
   const parsed = ingestMovieSchema.safeParse({
     title: 'Test Movie',
