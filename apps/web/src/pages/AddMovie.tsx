@@ -5,6 +5,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
@@ -37,6 +38,13 @@ function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info
 
 function editionFormatLabel(formatId?: string | null) {
   return formatLabel(formatId, 'Edition');
+}
+
+function resolveSafeExternalUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null;
+  } catch { return null; }
 }
 
 export function AddMoviePage() {
@@ -1206,24 +1214,51 @@ export function AddMoviePage() {
             <Grid item xs={12}>
               <Accordion sx={{ width: '100%', background: 'rgba(11,19,33,0.75)' }}>
                 <AccordionSummary expandIcon={<ExpandMoreRounded />}>
-                  <Box>
-                    <Typography fontWeight={600}>External IDs and links (optional)</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Usually filled automatically when you apply a metadata match.
-                    </Typography>
-                  </Box>
+                  <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
+                    <Box>
+                      <Typography fontWeight={600}>External IDs and links (optional)</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Usually filled automatically when you apply a metadata match.
+                      </Typography>
+                    </Box>
+                    {(form.imdbId || form.imdbUrl || form.tmdbUrl) && (
+                      <Chip size="small" color="primary" variant="outlined" label="Linked" />
+                    )}
+                  </Stack>
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={4}>
                       <TextField fullWidth label="IMDb title ID" placeholder="e.g. tt0133093" value={form.imdbId} onChange={(event) => updateForm('imdbId', event.target.value)} />
                     </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField fullWidth label="IMDb link" placeholder="https://www.imdb.com/title/..." value={form.imdbUrl} onChange={(event) => updateForm('imdbUrl', event.target.value)} />
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField fullWidth label="TMDb link" placeholder="https://www.themoviedb.org/movie/..." value={form.tmdbUrl} onChange={(event) => updateForm('tmdbUrl', event.target.value)} />
-                    </Grid>
+                    {([
+                      ['imdbUrl', 'IMDb link', 'https://www.imdb.com/title/...', 'IMDb'],
+                      ['tmdbUrl', 'TMDb link', 'https://www.themoviedb.org/movie/...', 'TMDb'],
+                    ] as const).map(([field, label, placeholder, provider]) => {
+                      const safeUrl = resolveSafeExternalUrl(form[field]);
+                      return (
+                        <Grid item xs={12} md={4} key={field}>
+                          <TextField
+                            fullWidth
+                            label={label}
+                            placeholder={placeholder}
+                            value={form[field]}
+                            onChange={(event) => updateForm(field, event.target.value)}
+                            InputProps={safeUrl ? {
+                              endAdornment: (
+                                <InputAdornment position="end">
+                                  <Tooltip title={`Open ${provider} page in new tab`}>
+                                    <IconButton component="a" href={safeUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open ${provider} page in new tab`} edge="end" size="small">
+                                      <OpenInNewRounded fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </InputAdornment>
+                              ),
+                            } : undefined}
+                          />
+                        </Grid>
+                      );
+                    })}
                   </Grid>
                 </AccordionDetails>
               </Accordion>
