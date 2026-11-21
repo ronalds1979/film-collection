@@ -620,7 +620,13 @@ export function CollectionPage() {
     });
   }, [collectionView, genreFilter, movies, deferredSearchTerm, statusFilter]);
 
+  const isCarouselActive = displayMode === 'carousel' && collectionView !== 'editions';
+
   const displayedRows = useMemo(() => {
+    // ⚡ Bolt: Skip flattening movie/edition rows while carousel view is active
+    if (isCarouselActive) {
+      return [];
+    }
     const rows = [];
     for (let i = 0; i < filteredMovies.length; i++) {
       const movie = filteredMovies[i];
@@ -634,7 +640,7 @@ export function CollectionPage() {
       }
     }
     return rows;
-  }, [collectionView, filteredMovies]);
+  }, [collectionView, filteredMovies, isCarouselActive]);
 
   const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || genreFilter !== 'all';
   const clearFilters = useCallback(() => {
@@ -646,11 +652,15 @@ export function CollectionPage() {
     setReloadToken((n) => n + 1);
   }, []);
   const visibleRows = useMemo(
-    () => displayedRows.slice(0, visibleCount),
-    [displayedRows, visibleCount],
+    () => (isCarouselActive ? [] : displayedRows.slice(0, visibleCount)),
+    [displayedRows, isCarouselActive, visibleCount],
   );
 
   const carouselShelves = useMemo(() => {
+    // ⚡ Bolt: Skip building genre-grouped shelves while table/cards view is active
+    if (!isCarouselActive) {
+      return [];
+    }
     if (genreFilter !== 'all') {
       let selectedGenre = undefined;
       for (let i = 0; i < genres.length; i++) {
@@ -690,7 +700,7 @@ export function CollectionPage() {
     }
 
     return shelves;
-  }, [filteredMovies, genreFilter, genres]);
+  }, [filteredMovies, genreFilter, genres, isCarouselActive]);
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, sm: 4 }, px: { xs: 1.5, sm: 3 } }}>
