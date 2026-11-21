@@ -39,3 +39,7 @@
 ## 2026-11-20 - Avoid Mounting Dual Responsive Views Hidden via CSS
 **Learning:** Rendering both `CollectionTable` and `CollectionMobileCards` simultaneously and hiding one via MUI `sx={{ display: { xs: ..., md: ... } }}` doubles React elements, Emotion CSS-in-JS work, and DOM nodes for every visible catalog row.
 **Action:** Use `useMediaQuery(theme.breakpoints.up('md'), { noSsr: true })` to mount only the active viewport representation (desktop table or mobile cards).
+
+## 2026-11-21 - MultiFormatOneDReader Hints & Lazy 90° LuminanceSource in ZXing
+**Learning:** Running separate `OneDReader` instances in a loop executes `GlobalHistogramBinarizer.getBlackRow()` redundantly per format (4× per row), while `OneDReader.doDecode()` already reverses every scanned `BitArray` row in-place (making explicit `180°`/`270°` buffer rotations redundant) and samples only 25 rows. When switching to `MultiFormatOneDReader`, passing `BARCODE_HINTS` (omitting `UPC_A`) to `.decode(bitmap, BARCODE_HINTS)` as well as the constructor is essential; otherwise `MultiFormatUPCEANReader` converts leading-zero `EAN_13` codes into 12-digit `UPC_A`.
+**Action:** Use a single `MultiFormatOneDReader` with `BARCODE_HINTS` passed to both constructor and `.decode()`, scan `[0, 90]`, and wrap the 90° pass in a lazy `LuminanceSource` subclass that reads only sampled rows on demand.

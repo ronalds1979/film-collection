@@ -2,12 +2,12 @@ import sharp from 'sharp';
 import { createWorker, PSM } from 'tesseract.js';
 import zxing from '@zxing/library';
 const {
+  BarcodeFormat,
   BinaryBitmap,
-  Code128Reader,
-  Code39Reader,
-  EAN13Reader,
+  DecodeHintType,
   HybridBinarizer,
-  ITFReader,
+  LuminanceSource,
+  MultiFormatOneDReader,
   RGBLuminanceSource,
 } = zxing;
 
@@ -80,57 +80,69 @@ export const preprocessBarcodeImage = async (imagePath) => {
   return image.toBuffer();
 };
 
-// ⚡ Bolt: Reuse ZXing reader instances across rotations and requests
-const BARCODE_READERS = [
-  new EAN13Reader(),
-  new Code128Reader(),
-  new Code39Reader(),
-  new ITFReader(),
-];
+// ⚡ Bolt: Use a single MultiFormatOneDReader with explicit POSSIBLE_FORMATS so
+// GlobalHistogramBinarizer.getBlackRow() runs once per scanned row instead of 4x.
+// Omitting UPC_A preserves EAN_13 format output from MultiFormatUPCEANReader.
+const BARCODE_HINTS = new Map([
+  [
+    DecodeHintType.POSSIBLE_FORMATS,
+    [BarcodeFormat.EAN_13, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF],
+  ],
+]);
+const BARCODE_READER = new MultiFormatOneDReader(BARCODE_HINTS);
 
-const tryDecodeBitmap = (bitmap, readers = BARCODE_READERS) => {
-  for (const reader of readers) {
-    try {
-      const result = reader.decode(bitmap);
-      return { value: result.getText(), format: result.getBarcodeFormat().toString() };
-    } catch (error) {
-      if (['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
-        continue;
-      }
-      throw error;
+const tryDecodeBitmap = (bitmap) => {
+  try {
+    const result = BARCODE_READER.decode(bitmap, BARCODE_HINTS);
+    return { value: result.getText(), format: result.getBarcodeFormat().toString() };
+  } catch (error) {
+    if (['NotFoundException', 'FormatException', 'ChecksumException'].includes(error?.name)) {
+      return null;
     }
+    throw error;
   }
-  return null;
 };
 
-// ⚡ Bolt: Rotate 1-channel grayscale pixels in-memory to avoid repeated PNG encode/decode overhead
-const rotateGrayscale = (src, width, height, angle, dst) => {
-  if (angle === 180) {
-    for (let i = 0, j = src.length - 1; i < src.length; i++, j--) {
-      dst[i] = src[j];
-    }
-    return { width, height };
+// ⚡ Bolt: Lazy 90° clockwise LuminanceSource that extracts only the rows OneDReader scans
+// (~25 rows) on demand, avoiding a full-image buffer allocation and strided transpose.
+class Rotated90LuminanceSource extends LuminanceSource {
+  constructor(luminances, srcWidth, srcHeight) {
+    super(srcHeight, srcWidth);
+    this.luminances = luminances;
+    this.srcWidth = srcWidth;
+    this.srcHeight = srcHeight;
   }
 
-  if (angle === 90) {
-    for (let y = 0; y < height; y++) {
-      const rowOffset = y * width;
-      const dstX = height - 1 - y;
-      for (let x = 0; x < width; x++) {
-        dst[x * height + dstX] = src[rowOffset + x];
-      }
+  getRow(y, row) {
+    const width = this.srcHeight;
+    if (!row || row.length < width) {
+      row = new Uint8ClampedArray(width);
     }
-    return { width: height, height: width };
-  }
-
-  for (let y = 0; y < height; y++) {
-    const rowOffset = y * width;
+    const src = this.luminances;
+    const step = this.srcWidth;
+    let srcOffset = (width - 1) * step + y;
     for (let x = 0; x < width; x++) {
-      dst[(width - 1 - x) * height + y] = src[rowOffset + x];
+      row[x] = src[srcOffset];
+      srcOffset -= step;
     }
+    return row;
   }
-  return { width: height, height: width };
-};
+
+  getMatrix() {
+    const width = this.srcHeight;
+    const height = this.srcWidth;
+    const matrix = new Uint8ClampedArray(width * height);
+    const src = this.luminances;
+    for (let y = 0; y < width; y++) {
+      const rowOffset = y * height;
+      const dstX = width - 1 - y;
+      for (let x = 0; x < height; x++) {
+        matrix[x * width + dstX] = src[rowOffset + x];
+      }
+    }
+    return matrix;
+  }
+}
 
 // ⚡ Bolt: Fast 2x grayscale downsample (4x fewer pixels) for rapid ZXing pre-pass
 const downsampleGrayscale2x = (src, width, height) => {
@@ -148,23 +160,15 @@ const downsampleGrayscale2x = (src, width, height) => {
 };
 
 const detectBarcodeAcrossAngles = (baseLuminance, baseWidth, baseHeight) => {
-  let rotatedBuffer;
+  // ⚡ Bolt: Scan 0° and lazy 90° only; OneDReader.doDecode() already reverses every
+  // scanned BitArray row in-place to cover 180° and 270° without rotating the image.
+  const sources = [
+    new RGBLuminanceSource(baseLuminance, baseWidth, baseHeight),
+    new Rotated90LuminanceSource(baseLuminance, baseWidth, baseHeight),
+  ];
 
-  // ⚡ Bolt: Try linear 180° reversal before strided 90°/270° matrix transposes
-  for (const angle of [0, 180, 90, 270]) {
-    let luminanceBytes = baseLuminance;
-    let width = baseWidth;
-    let height = baseHeight;
-
-    if (angle !== 0) {
-      rotatedBuffer ??= new Uint8ClampedArray(baseLuminance.length);
-      ({ width, height } = rotateGrayscale(baseLuminance, baseWidth, baseHeight, angle, rotatedBuffer));
-      luminanceBytes = rotatedBuffer;
-    }
-
-    const luminanceSource = new RGBLuminanceSource(luminanceBytes, width, height);
+  for (const luminanceSource of sources) {
     const bitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
-
     const result = tryDecodeBitmap(bitmap);
     if (result) {
       return result;
