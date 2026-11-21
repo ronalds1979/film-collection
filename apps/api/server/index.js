@@ -433,16 +433,19 @@ app.get('/api/export', heavyEndpointLimiter, async (_req, res, next) => {
   }
 });
 
-app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), async (req, res) => {
-  const slot = String(req.body.slot || '');
-  if (!req.file || !['front', 'back'].includes(slot)) {
-    res.status(400).json({ success: false, message: 'A cover image and a front/back slot are required.' });
-    return;
-  }
-
-  const normalizedFilename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.jpg`;
-  const normalizedPath = path.join(uploadsDir, normalizedFilename);
+app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), async (req, res, next) => {
+  // 🛡️ Sentinel: Guard optional req.body inside try/catch because multer leaves req.body undefined on non-multipart requests, which would otherwise trigger an Express 4 unhandled rejection crash
+  let slot = '';
+  let normalizedPath = null;
   try {
+    slot = typeof req.body?.slot === 'string' ? req.body.slot : '';
+    if (!req.file || !['front', 'back'].includes(slot)) {
+      res.status(400).json({ success: false, message: 'A cover image and a front/back slot are required.' });
+      return;
+    }
+
+    const normalizedFilename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.jpg`;
+    normalizedPath = path.join(uploadsDir, normalizedFilename);
     const meta = await sharp(req.file.buffer, { failOn: 'error', limitInputPixels: 25_000_000 }).metadata();
     if (!meta.format || !ALLOWED_SHARP_FORMATS.has(meta.format)) {
       res.status(415).json({
@@ -470,6 +473,10 @@ app.post('/api/upload-cover', heavyEndpointLimiter, upload.single('image'), asyn
       },
     });
   } catch (error) {
+    if (!normalizedPath) {
+      next(error);
+      return;
+    }
     await fs.promises.unlink(normalizedPath).catch((cleanupError) => {
       if (cleanupError.code !== 'ENOENT') {
         console.error('Failed to remove incomplete normalized cover', cleanupError instanceof Error ? cleanupError.name : 'Unknown error');

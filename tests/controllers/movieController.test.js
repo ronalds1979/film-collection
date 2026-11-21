@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { updateMovie } from '../../apps/api/server/controllers/movieController.js';
 import { ingestMovieSchema, isSafeHttpUrl, isSafeHttpsUrl } from '../../apps/api/server/schemas/movie.js';
 import { readBoundedJson, toTmdbResult } from '../../apps/api/server/services/metadata.js';
@@ -153,4 +154,25 @@ test('readBoundedJson rejects oversized Content-Length and streamed responses', 
     headers: { 'Content-Type': 'application/json' },
   });
   assert.deepEqual(await readBoundedJson(validResponse, 1024), { results: [1, 2, 3] });
+});
+
+test('POST /api/upload-cover returns 400 instead of crashing when req.body is undefined', async () => {
+  const { app, prisma } = await import('../../apps/api/server/index.js');
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/upload-cover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'not-multipart',
+    });
+    assert.equal(response.status, 400);
+    const payload = await response.json();
+    assert.equal(payload.success, false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await prisma.$disconnect().catch(() => {});
+  }
 });

@@ -56,3 +56,8 @@
 **Vulnerability:** `isPrivateOrLoopbackHost` in `apps/api/server/schemas/movie.js` only checked dotted-quad embedded IPv4 suffixes, missing hex-normalized IPv4-compatible IPv6 addresses (`::7f00:1`, `::a9fe:a9fe`, `::ff`), `fe80::/10` (`fe80`–`febf`), and NAT64 (`64:ff9b::/96`).
 **Learning:** Node's WHATWG `new URL()` parser normalizes IPv4-compatible IPv6 hosts such as `[::127.0.0.1]` to `[::7f00:1]`, silently bypassing dotted-quad regex checks on `parsed.hostname`.
 **Prevention:** Decode compressed two-hextet (`::xxxx:yyyy`) and single-hextet (`::xxxx`) IPv6 hosts back to IPv4 and cover the full `fe80::/10` and `64:ff9b:` ranges in SSRF host validators.
+
+## 2026-11-21 - Unhandled Rejection Crash on Non-Multipart Multer Requests
+**Vulnerability:** `POST /api/upload-cover` in `apps/api/server/index.js` read `req.body.slot` before entering its `try/catch` block.
+**Learning:** `multer` skips non-`multipart/form-data` requests and `express.json()` skips non-JSON requests, leaving `req.body` as `undefined`; accessing `req.body.slot` outside `try/catch` in an Express 4 `async` handler triggers an unhandled rejection that crashes Node.js.
+**Prevention:** Always use optional chaining (`req.body?.field`) and wrap the entire `async` Express 4 route handler body in `try/catch` with `next(error)`.
