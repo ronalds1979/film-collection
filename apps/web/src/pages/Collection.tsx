@@ -23,6 +23,62 @@ function getEmptyStateCopy(collectionView: string, hasActiveFilters?: boolean): 
   return { message: 'Your film collection is empty. Start by cataloging your first physical edition.', showAddCta: true };
 }
 
+// ⚡ Bolt: Memoize individual mobile cards (matching CollectionTableRow) so "Show more" pagination
+// and filter updates reuse unchanged card subtrees instead of re-rendering all visible cards.
+const CollectionMobileCard = memo(function CollectionMobileCard({ movie, edition, onSelect }: {
+  movie: Movie;
+  edition?: Edition;
+  onSelect: (movie: Movie, edition?: Edition) => void;
+}) {
+  const displayTitle = movie.alternativeTitle || movie.title;
+  const subtitle = [movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable';
+  const genreNames = movie._genresText ?? (movie.genres || []).map((genre) => genre.name).join(', ');
+
+  return (
+    <Card sx={{ overflow: 'hidden', background: 'rgba(18,28,46,0.96)' }}>
+      <CardActionArea
+        onClick={() => onSelect(movie, edition)}
+        aria-label={`Edit details for ${displayTitle}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
+        sx={{ textAlign: 'left' }}
+      >
+        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography fontWeight={700} sx={{ overflowWrap: 'anywhere' }}>
+                {displayTitle}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, overflowWrap: 'anywhere' }}>
+                {subtitle}
+              </Typography>
+            </Box>
+            {movie.favorite && <Chip size="small" color="secondary" label="Favorite" />}
+          </Stack>
+          <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+            <Typography variant="body2">
+              {movie.releaseYear || 'Year unavailable'} · {movie.watchedStatus || 'unwatched'}
+              {movie.watchedDate ? ` · Watched: ${movie.watchedDate}` : ''}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {genreNames || 'No genre'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {edition
+                ? `${formatLabel(edition.formatId)}${edition.editionYear ? ` · ${edition.editionYear}` : ''}${edition.barcode ? ` · ${edition.barcode}` : ''}`
+                : 'No physical edition'}
+            </Typography>
+          </Stack>
+          <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5} sx={{ mt: 1.5, color: 'primary.main' }}>
+            <EditRounded fontSize="small" />
+            <Typography variant="button" sx={{ fontSize: '0.8125rem' }}>
+              Edit details
+            </Typography>
+          </Stack>
+        </CardContent>
+      </CardActionArea>
+    </Card>
+  );
+});
+
 const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoading, loadError, onRetry, onSelect, hasActiveFilters, onClearFilters, collectionView }: {
   rows: Array<{ movie: Movie; edition?: Edition }>;
   isLoading: boolean;
@@ -82,47 +138,12 @@ const CollectionMobileCards = memo(function CollectionMobileCards({ rows, isLoad
   return (
     <Stack spacing={1.5} sx={{ display: { xs: 'flex', md: 'none' } }} aria-label="Collection movie list">
       {rows.map(({ movie, edition }) => (
-        <Card key={`${movie.id}-${edition?.id || 'movie'}`} sx={{ overflow: 'hidden', background: 'rgba(18,28,46,0.96)' }}>
-          <CardActionArea
-            onClick={() => onSelect(movie, edition)}
-            aria-label={`Edit details for ${movie.alternativeTitle || movie.title}${edition ? ` (${formatLabel(edition.formatId)})` : ''}`}
-            sx={{ textAlign: 'left' }}
-          >
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography fontWeight={700} sx={{ overflowWrap: 'anywhere' }}>
-                    {movie.alternativeTitle || movie.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, overflowWrap: 'anywhere' }}>
-                    {[movie.title, movie.originalTitle].filter(Boolean).join(' · ') || 'Movie title unavailable'}
-                  </Typography>
-                </Box>
-                {movie.favorite && <Chip size="small" color="secondary" label="Favorite" />}
-              </Stack>
-              <Stack spacing={0.75} sx={{ mt: 1.5 }}>
-                <Typography variant="body2">
-                  {movie.releaseYear || 'Year unavailable'} · {movie.watchedStatus || 'unwatched'}
-                  {movie.watchedDate ? ` · Watched: ${movie.watchedDate}` : ''}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-                  {(movie._genresText ?? (movie.genres || []).map((genre) => genre.name).join(', ')) || 'No genre'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-                  {edition
-                    ? `${formatLabel(edition.formatId)}${edition.editionYear ? ` · ${edition.editionYear}` : ''}${edition.barcode ? ` · ${edition.barcode}` : ''}`
-                    : 'No physical edition'}
-                </Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5} sx={{ mt: 1.5, color: 'primary.main' }}>
-                <EditRounded fontSize="small" />
-                <Typography variant="button" sx={{ fontSize: '0.8125rem' }}>
-                  Edit details
-                </Typography>
-              </Stack>
-            </CardContent>
-          </CardActionArea>
-        </Card>
+        <CollectionMobileCard
+          key={`${movie.id}-${edition?.id || 'movie'}`}
+          movie={movie}
+          edition={edition}
+          onSelect={onSelect}
+        />
       ))}
     </Stack>
   );
@@ -655,6 +676,9 @@ export function CollectionPage() {
     () => (isCarouselActive ? [] : displayedRows.slice(0, visibleCount)),
     [displayedRows, isCarouselActive, visibleCount],
   );
+  // ⚡ Bolt: Only surface filter-active flag to list views when empty so synchronous search keystrokes
+  // ("" -> "a") don't force an immediate 60-row re-render before deferredSearchTerm settles.
+  const hasActiveEmptyFilters = visibleRows.length === 0 && hasActiveFilters;
 
   const carouselShelves = useMemo(() => {
     // ⚡ Bolt: Skip building genre-grouped shelves while table/cards view is active
@@ -905,7 +929,7 @@ export function CollectionPage() {
               loadError={loadError}
               onRetry={handleRetry}
               onSelect={handleSelectRow}
-              hasActiveFilters={hasActiveFilters}
+              hasActiveFilters={hasActiveEmptyFilters}
               onClearFilters={clearFilters}
               collectionView={collectionView}
             />
@@ -916,7 +940,7 @@ export function CollectionPage() {
               loadError={loadError}
               onRetry={handleRetry}
               onSelect={handleSelectRow}
-              hasActiveFilters={hasActiveFilters}
+              hasActiveFilters={hasActiveEmptyFilters}
               onClearFilters={clearFilters}
               collectionView={collectionView}
             />
