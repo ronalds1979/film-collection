@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
@@ -1052,14 +1052,28 @@ export function AddMoviePage() {
                     const value = event.target.value;
                     updateForm('genreIds', typeof value === 'string' ? value.split(',') : value);
                   }}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((id) => <Chip key={id} label={genreNameMap.get(id) || id} size="small" />)}
-                    </Box>
-                  )}
+                  renderValue={(selected) => {
+                    const genresDisabled = !genres.length || Boolean(genreError);
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((id) => (
+                          <Chip
+                            key={id}
+                            label={genreNameMap.get(id) || id}
+                            size="small"
+                            onMouseDown={genresDisabled ? undefined : (event) => event.stopPropagation()}
+                            onDelete={genresDisabled ? undefined : () => updateForm('genreIds', form.genreIds.filter((genreId) => genreId !== id))}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  }}
                 >
                   {genres.map((genre) => (
-                    <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
+                    <MenuItem key={genre.id} value={genre.id}>
+                      <Checkbox checked={form.genreIds.includes(genre.id)} size="small" />
+                      <ListItemText primary={genre.name} />
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
