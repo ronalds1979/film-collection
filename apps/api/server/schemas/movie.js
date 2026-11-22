@@ -55,7 +55,8 @@ const coverPathSchema = z
   .nullable();
 
 const isPrivateOrLoopbackHost = (rawHostname) => {
-  const host = String(rawHostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  // 🛡️ Sentinel: Strip trailing DNS root dots so FQDN forms like "localhost." or "metadata.internal." cannot bypass host checks
+  const host = String(rawHostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   if (
     !host
     || host === 'localhost'

@@ -61,3 +61,8 @@
 **Vulnerability:** `POST /api/upload-cover` in `apps/api/server/index.js` read `req.body.slot` before entering its `try/catch` block.
 **Learning:** `multer` skips non-`multipart/form-data` requests and `express.json()` skips non-JSON requests, leaving `req.body` as `undefined`; accessing `req.body.slot` outside `try/catch` in an Express 4 `async` handler triggers an unhandled rejection that crashes Node.js.
 **Prevention:** Always use optional chaining (`req.body?.field`) and wrap the entire `async` Express 4 route handler body in `try/catch` with `next(error)`.
+
+## 2026-11-22 - FQDN Trailing-Dot Bypass in SSRF Host Validation
+**Vulnerability:** `isPrivateOrLoopbackHost` in `apps/api/server/schemas/movie.js` did not strip trailing DNS root dots (`.`) from `parsed.hostname`, allowing `https://localhost./`, `https://127.0.0.1./`, `https://printer.local./`, and `https://metadata.internal./` to bypass SSRF checks.
+**Learning:** Node's WHATWG `new URL()` parser preserves trailing dots in `parsed.hostname`, which defeats exact hostname equality, `.local`/`.internal`/`.localhost` suffix checks, and IPv4 regex matching.
+**Prevention:** Strip trailing dots (`.replace(/\.+$/, '')`) during host normalization in SSRF validators before matching hostnames or IP patterns.
