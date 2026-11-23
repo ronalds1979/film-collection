@@ -181,3 +181,20 @@ test('POST /api/upload-cover returns 400 instead of crashing when req.body is un
     await prisma.$disconnect().catch(() => {});
   }
 });
+
+test('GET /uploads returns 404 JSON instead of SPA HTML when cover file is missing', async () => {
+  const { app, prisma } = await import('../../apps/api/server/index.js');
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const response = await fetch(`http://127.0.0.1:${address.port}/uploads/nonexistent-cover.jpg`);
+    assert.equal(response.status, 404);
+    const payload = await response.json();
+    assert.equal(payload.success, false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await prisma.$disconnect().catch(() => {});
+  }
+});

@@ -247,8 +247,10 @@ app.use((req, res, next) => {
   next();
 });
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
+// 🛡️ Sentinel: Rate-limit /uploads to prevent API_AUTH_TOKEN brute-force and stop missing files falling through to SPA HTML
 app.use(
   '/uploads',
+  globalApiLimiter,
   requireAuthIfConfigured,
   express.static(uploadsDir, {
     maxAge: '30d',
@@ -259,6 +261,9 @@ app.use(
       }
     },
   }),
+  (_req, res) => {
+    res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+  },
 );
 
 app.get('/api/health', (_req, res) => {
