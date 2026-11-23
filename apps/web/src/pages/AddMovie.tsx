@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -49,6 +49,71 @@ function resolveSafeExternalUrl(rawUrl: string): string | null {
     return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null;
   } catch { return null; }
 }
+
+// ⚡ Bolt: Memoize metadata match cards so typing in AddMovie form fields skips re-rendering up to ~30 search result cards per keystroke
+const MetadataResultCard = memo(function MetadataResultCard({
+  result,
+  resultKey,
+  isApplied,
+  posterFailed,
+  onApply,
+  onPosterError,
+}: {
+  result: SearchResult;
+  resultKey: string;
+  isApplied: boolean;
+  posterFailed: boolean;
+  onApply: (result: SearchResult, resultKey: string) => void;
+  onPosterError: (resultKey: string) => void;
+}) {
+  const posterUrl = !posterFailed ? resolvePosterUrl(result.poster_path, 'w185') : '';
+  return (
+    <Paper
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        background: 'rgba(18,28,46,0.9)',
+        border: isApplied ? '1px solid #8ab4ff' : '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+        <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ minWidth: 0 }}>
+          {posterUrl && (
+            <Box
+              component="img"
+              src={posterUrl}
+              alt={`${result.title} poster`}
+              loading="lazy"
+              decoding="async"
+              onError={() => onPosterError(resultKey)}
+              sx={{ width: 56, height: 84, objectFit: 'cover', borderRadius: 1.5, flexShrink: 0, bgcolor: 'rgba(255,255,255,0.06)' }}
+            />
+          )}
+          <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Typography fontWeight={700}>{result.title}</Typography>
+              {result.source && <Chip size="small" variant="outlined" label={result.source.toUpperCase()} />}
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {result.overview || 'No overview available.'}
+            </Typography>
+          </Box>
+        </Stack>
+        <Button
+          variant={isApplied ? 'contained' : 'outlined'}
+          aria-pressed={isApplied}
+          onClick={() => onApply(result, resultKey)}
+          sx={{ alignSelf: { md: 'center' }, flexShrink: 0 }}
+        >
+          {isApplied ? 'Applied ✓' : 'Use metadata'}
+        </Button>
+      </Stack>
+    </Paper>
+  );
+});
 
 export function AddMoviePage() {
   const { movieId } = useParams();
@@ -593,7 +658,7 @@ export function AddMoviePage() {
     }
   };
 
-  const applyMetadata = (result: SearchResult, resultKey?: string) => {
+  const applyMetadata = useCallback((result: SearchResult, resultKey?: string) => {
     const year = result.release_date || result.releaseDate || '';
     const parsedYear = year ? String(year).slice(0, 4) : '';
     const safeImdbId = result.imdb_id && /^tt\d{1,12}$/i.test(result.imdb_id) ? result.imdb_id : null;
@@ -616,7 +681,11 @@ export function AddMoviePage() {
     setAppliedResultKey(resultKey || null);
     setIsDirty(true);
     setLookupStatusMessage(`Metadata from ${result.source || 'source'} applied to the entry.`);
-  };
+  }, []);
+
+  const handlePosterError = useCallback((resultKey: string) => {
+    setFailedPosters((prev) => (prev[resultKey] ? prev : { ...prev, [resultKey]: true }));
+  }, []);
 
   const handleIdentificationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter') {
@@ -956,54 +1025,16 @@ export function AddMoviePage() {
                 <Typography variant="subtitle1" component="h3" fontWeight={700}>Review metadata matches</Typography>
                 {sortedSearchResults.map((result, index) => {
                   const resultKey = `${result.source || 'meta'}-${result.id || result.imdb_id || result.title}-${index}`;
-                  const isApplied = appliedResultKey === resultKey;
-                  const posterUrl = !failedPosters[resultKey] ? resolvePosterUrl(result.poster_path, 'w185') : '';
                   return (
-                    <Paper
+                    <MetadataResultCard
                       key={resultKey}
-                      sx={{
-                        p: 2,
-                        borderRadius: 2,
-                        background: 'rgba(18,28,46,0.9)',
-                        border: isApplied ? '1px solid #8ab4ff' : '1px solid rgba(255,255,255,0.06)',
-                      }}
-                    >
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
-                        <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ minWidth: 0 }}>
-                          {posterUrl && (
-                            <Box
-                              component="img"
-                              src={posterUrl}
-                              alt={`${result.title} poster`}
-                              loading="lazy"
-                              decoding="async"
-                              onError={() => setFailedPosters((prev) => ({ ...prev, [resultKey]: true }))}
-                              sx={{ width: 56, height: 84, objectFit: 'cover', borderRadius: 1.5, flexShrink: 0, bgcolor: 'rgba(255,255,255,0.06)' }}
-                            />
-                          )}
-                          <Box sx={{ minWidth: 0 }}>
-                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                              <Typography fontWeight={700}>{result.title}</Typography>
-                              {result.source && <Chip size="small" variant="outlined" label={result.source.toUpperCase()} />}
-                            </Stack>
-                            <Typography variant="body2" color="text.secondary">
-                              {result.original_title || result.originalTitle || 'Original title unavailable'} · {result.release_date || result.releaseDate || 'Release date unavailable'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                              {result.overview || 'No overview available.'}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                        <Button
-                          variant={isApplied ? 'contained' : 'outlined'}
-                          aria-pressed={isApplied}
-                          onClick={() => applyMetadata(result, resultKey)}
-                          sx={{ alignSelf: { md: 'center' }, flexShrink: 0 }}
-                        >
-                          {isApplied ? 'Applied ✓' : 'Use metadata'}
-                        </Button>
-                      </Stack>
-                    </Paper>
+                      result={result}
+                      resultKey={resultKey}
+                      isApplied={appliedResultKey === resultKey}
+                      posterFailed={Boolean(failedPosters[resultKey])}
+                      onApply={applyMetadata}
+                      onPosterError={handlePosterError}
+                    />
                   );
                 })}
               </Stack>
