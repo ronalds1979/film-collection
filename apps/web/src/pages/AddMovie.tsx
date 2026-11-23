@@ -13,6 +13,9 @@ import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRati
 
 function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info' {
   const lower = msg.toLowerCase();
+  if (lower.endsWith('saved to your collection.')) {
+    return 'success';
+  }
   if (
     lower.includes('could not')
     || lower.includes('unable')
@@ -85,6 +88,7 @@ export function AddMoviePage() {
   const [coverUploadStatus, setCoverUploadStatus] = useState<{ front?: CoverUploadStatus; back?: CoverUploadStatus }>({});
   const [lookupStatusMessage, setLookupStatusMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [savedMovieTitle, setSavedMovieTitle] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<string | null>(null);
   const [isReadingBarcode, setIsReadingBarcode] = useState(false);
@@ -289,6 +293,7 @@ export function AddMoviePage() {
       },
     }));
     setStatusMessage(`Preparing and saving the ${slot} cover photo...`);
+    setSavedMovieTitle(null);
 
     try {
       await persistPendingCover(slot, file);
@@ -633,11 +638,13 @@ export function AddMoviePage() {
     setAppliedResultKey(null);
     setLookupStatusMessage(null);
     setStatusMessage(null);
+    setSavedMovieTitle(null);
     setIsDirty(false);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSavedMovieTitle(null);
 
     if (
       (frontCover && !uploadedCovers.front)
@@ -694,7 +701,13 @@ export function AddMoviePage() {
         navigate('/collection');
         return;
       }
-      setStatusMessage('Movie and edition saved to your collection.');
+      const savedTitle = form.title.trim();
+      setSavedMovieTitle(savedTitle || 'Movie');
+      setStatusMessage(
+        savedTitle
+          ? `“${savedTitle}” and its edition were saved to your collection.`
+          : 'Movie and edition saved to your collection.',
+      );
       setLookupStatusMessage(null);
       setIsDirty(false);
       setForm(emptyMovieForm);
@@ -1313,17 +1326,37 @@ export function AddMoviePage() {
             </Grid>
           </Grid>
 
-          {statusMessage && (
-            <Alert
-              role={getStatusSeverity(statusMessage) === 'error' ? 'alert' : 'status'}
-              aria-live={getStatusSeverity(statusMessage) === 'error' ? 'assertive' : 'polite'}
-              severity={getStatusSeverity(statusMessage)}
-              onClose={() => setStatusMessage(null)}
-              sx={{ mt: 3 }}
-            >
-              {statusMessage}
-            </Alert>
-          )}
+          {statusMessage && (() => {
+            const severity = getStatusSeverity(statusMessage);
+            const showViewCollection = severity === 'success' && Boolean(savedMovieTitle);
+            const clearStatus = () => {
+              setStatusMessage(null);
+              setSavedMovieTitle(null);
+            };
+            return (
+              <Alert
+                role={severity === 'error' ? 'alert' : 'status'}
+                aria-live={severity === 'error' ? 'assertive' : 'polite'}
+                severity={severity}
+                onClose={clearStatus}
+                action={showViewCollection ? (
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Button color="inherit" size="small" onClick={() => navigate('/collection')}>
+                      View collection
+                    </Button>
+                    <Tooltip title="Dismiss">
+                      <IconButton size="small" color="inherit" aria-label="Dismiss message" onClick={clearStatus}>
+                        <ClearRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                ) : undefined}
+                sx={{ mt: 3 }}
+              >
+                {statusMessage}
+              </Alert>
+            );
+          })()}
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 4 }}>
             <Button type="submit" variant="contained" size="large" disabled={isSaving || !genres.length || Boolean(genreError) || (isEditing && !editingEditionId) || uploadingCovers.front || uploadingCovers.back || rotatingCovers.front || rotatingCovers.back} startIcon={isSaving ? <CircularProgress size={18} /> : undefined}>
