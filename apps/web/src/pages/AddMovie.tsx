@@ -1022,7 +1022,22 @@ export function AddMoviePage() {
             )}
             {searchResults.length > 0 && (
               <Stack spacing={2} sx={{ mt: 2 }}>
-                <Typography variant="subtitle1" component="h3" fontWeight={700}>Review metadata matches</Typography>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Typography variant="subtitle1" component="h3" fontWeight={700}>
+                    Review metadata matches ({sortedSearchResults.length})
+                  </Typography>
+                  <Button
+                    size="small"
+                    startIcon={<ClearRounded fontSize="small" />}
+                    aria-label="Clear metadata search results"
+                    onClick={() => {
+                      setSearchResults([]);
+                      setAppliedResultKey(null);
+                    }}
+                  >
+                    Clear results
+                  </Button>
+                </Stack>
                 {sortedSearchResults.map((result, index) => {
                   const resultKey = `${result.source || 'meta'}-${result.id || result.imdb_id || result.title}-${index}`;
                   return (
