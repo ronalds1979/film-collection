@@ -70,14 +70,20 @@ const isPrivateOrLoopbackHost = (rawHostname) => {
     return true;
   }
   if (host.includes(':')) {
+    // 🛡️ Sentinel: Block IPv6 site-local (fec0::/10), 6to4 (2002::/16), Teredo (2001::/32), and doc (2001:db8::/32) ranges alongside link-local/ULA/NAT64
     if (
       host.startsWith('::ffff:')
       || /^fe[89ab][0-9a-f]:/.test(host)
+      || /^fe[c-f][0-9a-f]:/.test(host)
       || host.startsWith('fc')
       || host.startsWith('fd')
       || host.startsWith('ff')
       || host.startsWith('64:ff9b:')
       || host.startsWith('100::')
+      || host.startsWith('2002:')
+      || host.startsWith('2001::')
+      || host.startsWith('2001:0:')
+      || host.startsWith('2001:db8:')
     ) {
       return true;
     }
