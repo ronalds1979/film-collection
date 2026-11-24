@@ -1,10 +1,73 @@
-import { memo, useMemo, useRef, useState } from 'react';
-import { Autocomplete, Box, Button, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { Autocomplete, Box, Button, Checkbox, Chip, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, SelectChangeEvent, Stack, TextField, Typography, Alert } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
-import { CoverUploadStatus } from '../types';
+import { CoverUploadStatus, Genre } from '../types';
 
 type NamedOption = { id: string; name: string };
+
+// ⚡ Bolt: Memoize the multi-select genres control and index selected IDs in a Set so typing
+// in unrelated AddMovie fields skips re-rendering 18 MenuItem/Checkbox subtrees per keystroke.
+export const GenreSelectField = memo(function GenreSelectField({
+  genres,
+  selectedGenreIds,
+  genreError,
+  onFieldChange,
+}: {
+  genres: Genre[];
+  selectedGenreIds: string[];
+  genreError: string | null;
+  onFieldChange: (field: string, value: string[]) => void;
+}) {
+  const genresDisabled = !genres.length || Boolean(genreError);
+  const genreNameMap = useMemo(
+    () => new Map(genres.map((genre) => [genre.id, genre.name])),
+    [genres],
+  );
+  const selectedGenreSet = useMemo(() => new Set(selectedGenreIds), [selectedGenreIds]);
+
+  const handleChange = useCallback((event: SelectChangeEvent<string[]>) => {
+    const value = event.target.value;
+    onFieldChange('genreIds', typeof value === 'string' ? value.split(',') : value);
+  }, [onFieldChange]);
+
+  return (
+    <>
+      <FormControl fullWidth disabled={genresDisabled}>
+        <InputLabel id="movie-genres-label">Genres</InputLabel>
+        <Select
+          labelId="movie-genres-label"
+          multiple
+          label="Genres"
+          value={selectedGenreIds}
+          onChange={handleChange}
+          renderValue={(selected) => (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {selected.map((id) => (
+                <Chip
+                  key={id}
+                  label={genreNameMap.get(id) || id}
+                  size="small"
+                  onMouseDown={genresDisabled ? undefined : (event) => event.stopPropagation()}
+                  onDelete={genresDisabled ? undefined : () => onFieldChange('genreIds', selectedGenreIds.filter((genreId) => genreId !== id))}
+                />
+              ))}
+            </Box>
+          )}
+        >
+          {genres.map((genre) => (
+            <MenuItem key={genre.id} value={genre.id}>
+              <Checkbox checked={selectedGenreSet.has(genre.id)} size="small" />
+              <ListItemText primary={genre.name} />
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {genreError && <Alert severity="error" sx={{ mt: 1 }}>{genreError}</Alert>}
+      {!genreError && !genres.length && <Typography variant="caption" color="text.secondary">Loading genres...</Typography>}
+    </>
+  );
+});
 
 export const NameOptionField = memo(function NameOptionField({ label, value, options, helperText, field, onChange, onFieldChange }: {
   label: string;

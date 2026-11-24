@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
@@ -8,7 +8,7 @@ import ClearRounded from '@mui/icons-material/ClearRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
-import { UploadField, NameOptionField, SuggestionField } from '../components/FormFields';
+import { UploadField, NameOptionField, SuggestionField, GenreSelectField } from '../components/FormFields';
 import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
 function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info' {
@@ -180,10 +180,6 @@ export function AddMoviePage() {
     [searchResults]
   );
 
-  const genreNameMap = useMemo(
-    () => new Map(genres.map((genre) => [genre.id, genre.name])),
-    [genres],
-  );
   const step1Ready = Boolean(form.title.trim());
   const step2Ready = Boolean(uploadedCovers.front && uploadedCovers.back);
   const step3Ready = Boolean(form.genreIds.length && form.formatId);
@@ -1100,44 +1096,12 @@ export function AddMoviePage() {
               <Typography variant="subtitle1" component="h3" fontWeight={700}>Movie details</Typography>
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth disabled={!genres.length || Boolean(genreError)}>
-                <InputLabel id="movie-genres-label">Genres</InputLabel>
-                <Select
-                  labelId="movie-genres-label"
-                  multiple
-                  label="Genres"
-                  value={form.genreIds}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    updateForm('genreIds', typeof value === 'string' ? value.split(',') : value);
-                  }}
-                  renderValue={(selected) => {
-                    const genresDisabled = !genres.length || Boolean(genreError);
-                    return (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((id) => (
-                          <Chip
-                            key={id}
-                            label={genreNameMap.get(id) || id}
-                            size="small"
-                            onMouseDown={genresDisabled ? undefined : (event) => event.stopPropagation()}
-                            onDelete={genresDisabled ? undefined : () => updateForm('genreIds', form.genreIds.filter((genreId) => genreId !== id))}
-                          />
-                        ))}
-                      </Box>
-                    );
-                  }}
-                >
-                  {genres.map((genre) => (
-                    <MenuItem key={genre.id} value={genre.id}>
-                      <Checkbox checked={form.genreIds.includes(genre.id)} size="small" />
-                      <ListItemText primary={genre.name} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              {genreError && <Alert severity="error" sx={{ mt: 1 }}>{genreError}</Alert>}
-              {!genreError && !genres.length && <Typography variant="caption" color="text.secondary">Loading genres...</Typography>}
+              <GenreSelectField
+                genres={genres}
+                selectedGenreIds={form.genreIds}
+                genreError={genreError}
+                onFieldChange={updateForm}
+              />
             </Grid>
             <Grid item xs={12} md={4}>
               <TextField fullWidth label="Alternative title" value={form.alternativeTitle} onChange={(event) => updateForm('alternativeTitle', event.target.value)} />
