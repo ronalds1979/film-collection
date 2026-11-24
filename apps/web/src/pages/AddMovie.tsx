@@ -46,6 +46,7 @@ function editionFormatLabel(formatId?: string | null) {
 function resolveSafeExternalUrl(rawUrl: string): string | null {
   try {
     const parsed = new URL(rawUrl.trim());
+    if (parsed.username || parsed.password) return null;
     return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null;
   } catch { return null; }
 }
@@ -747,7 +748,7 @@ export function AddMoviePage() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(isEditing ? `${API_BASE}/movies/${encodeURIComponent(movieId)}` : `${API_BASE}/ingest`, {
+      const response = await fetch(isEditing && movieId ? `${API_BASE}/movies/${encodeURIComponent(movieId)}` : `${API_BASE}/ingest`, {
         method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',

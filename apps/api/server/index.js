@@ -16,6 +16,7 @@ import {
   cleanupReplacedCoverFiles,
   prisma,
   projectRoot,
+  resolveUploadFilePath,
   seedGenres,
   uploadsDir,
   verifyUploadedCoversExist,
@@ -158,13 +159,12 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const SAFE_FETCH_SITES = new Set(['same-origin', 'same-site', 'none']);
 
+// 🛡️ Sentinel: Compare fixed-length HMAC-SHA256 digests so timing does not leak API_AUTH_TOKEN length
+const timingSafeHmacKey = crypto.randomBytes(32);
 const isTimingSafeEqual = (a, b) => {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(aBuf, bBuf);
+  const aDigest = crypto.createHmac('sha256', timingSafeHmacKey).update(String(a)).digest();
+  const bDigest = crypto.createHmac('sha256', timingSafeHmacKey).update(String(b)).digest();
+  return crypto.timingSafeEqual(aDigest, bDigest);
 };
 
 const requireAuthIfConfigured = (req, res, next) => {
@@ -247,11 +247,42 @@ app.use((req, res, next) => {
   next();
 });
 // ⚡ Bolt: Cover filenames include timestamp + random hex, so they are immutable and safely cacheable
-// 🛡️ Sentinel: Rate-limit /uploads to prevent API_AUTH_TOKEN brute-force and stop missing files falling through to SPA HTML
+// 🛡️ Sentinel: Rate-limit /uploads, block symlinks and non-JPEG files via lstat, and return 404 JSON on missing covers
+const verifySafeStaticUpload = async (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+    return;
+  }
+  let decodedPath = '';
+  try {
+    decodedPath = decodeURIComponent(req.path || '');
+  } catch {
+    res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+    return;
+  }
+  const resolved = resolveUploadFilePath(`/uploads${decodedPath}`);
+  if (!resolved || !resolved.toLowerCase().endsWith('.jpg')) {
+    res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+    return;
+  }
+  try {
+    const stat = await fs.promises.lstat(resolved);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+      return;
+    }
+  } catch {
+    res.status(404).json({ success: false, message: 'Uploaded cover not found.' });
+    return;
+  }
+  next();
+};
+
 app.use(
   '/uploads',
   globalApiLimiter,
   requireAuthIfConfigured,
+  verifySafeStaticUpload,
   express.static(uploadsDir, {
     maxAge: '30d',
     immutable: true,

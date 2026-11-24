@@ -199,6 +199,11 @@ test('GET /uploads returns 404 JSON instead of SPA HTML when cover file is missi
     assert.equal(response.status, 404);
     const payload = await response.json();
     assert.equal(payload.success, false);
+
+    const svgResponse = await fetch(`http://127.0.0.1:${address.port}/uploads/malicious.svg`);
+    assert.equal(svgResponse.status, 404);
+    const svgPayload = await svgResponse.json();
+    assert.equal(svgPayload.success, false);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await prisma.$disconnect().catch(() => {});
