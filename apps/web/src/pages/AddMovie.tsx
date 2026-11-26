@@ -7,7 +7,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
-import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
+import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, resolveSafeExternalUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
 import { UploadField, NameOptionField, SuggestionField, GenreSelectField } from '../components/FormFields';
 import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
 
@@ -41,14 +41,6 @@ function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info
 
 function editionFormatLabel(formatId?: string | null) {
   return formatLabel(formatId, 'Edition');
-}
-
-function resolveSafeExternalUrl(rawUrl: string): string | null {
-  try {
-    const parsed = new URL(rawUrl.trim());
-    if (parsed.username || parsed.password) return null;
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null;
-  } catch { return null; }
 }
 
 // ⚡ Bolt: Memoize metadata match cards so typing in AddMovie form fields skips re-rendering up to ~30 search result cards per keystroke

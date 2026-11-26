@@ -1,4 +1,4 @@
-import { UploadedCover } from '../types';
+import type { UploadedCover } from '../types';
 
 export const API_BASE = '/api';
 export const baseCollator = new Intl.Collator(undefined, { sensitivity: "base" });
@@ -247,18 +247,40 @@ export const coverReference = (coverPath: string): UploadedCover => ({
   path: coverPath,
 });
 
-/** Resolves a TMDB path, local upload path, or HTTPS/HTTP URL into a displayable poster URL. */
+const SAFE_UPLOAD_PATH_REGEX = /^\/uploads\/(?!\.\.?$)[^/\\]+$/;
+const SAFE_TMDB_IMAGE_PATH_REGEX = /^\/[A-Za-z0-9._-]+\.(?:jpg|jpeg|png|webp)$/i;
+
+function isPrivateOrLoopbackHost(rawHostname: string): boolean {
+  const host = rawHostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  if (
+    !host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')
+    || host === '::1' || host === '::' || host.startsWith('::ffff:') || /^fe[89ab][0-9a-f]:/.test(host)
+    || host.startsWith('fc') || host.startsWith('fd')
+  ) return true;
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!ipv4) return false;
+  const [a, b] = ipv4.slice(1).map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+}
+
+// 🛡️ Sentinel: Enforce HTTPS-only external links/posters without credentials or private/loopback targets
+export function resolveSafeExternalUrl(rawUrl?: string | null): string | null {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return isPrivateOrLoopbackHost(parsed.hostname) ? null : parsed.toString();
+  } catch { return null; }
+}
+
+/** Resolves a TMDB path, local upload path, or safe HTTPS URL into a displayable poster URL. */
 export function resolvePosterUrl(posterPath?: string | null, tmdbSize: 'w185' | 'w500' = 'w500'): string {
-  if (!posterPath || posterPath === 'N/A') return '';
-  if (posterPath.startsWith('https://') || posterPath.startsWith('http://')) {
-    return posterPath;
-  }
-  if (posterPath.startsWith('/') && !posterPath.startsWith('//')) {
-    return posterPath.startsWith('/uploads/')
-      ? posterPath
-      : `https://image.tmdb.org/t/p/${tmdbSize}${posterPath}`;
-  }
-  return '';
+  const trimmed = posterPath?.trim() || '';
+  if (!trimmed || trimmed === 'N/A') return '';
+  if (SAFE_UPLOAD_PATH_REGEX.test(trimmed)) return trimmed;
+  if (SAFE_TMDB_IMAGE_PATH_REGEX.test(trimmed)) return `https://image.tmdb.org/t/p/${tmdbSize}${trimmed}`;
+  return resolveSafeExternalUrl(trimmed) || '';
 }
 
 export function isValidRetailBarcode(value: string) {

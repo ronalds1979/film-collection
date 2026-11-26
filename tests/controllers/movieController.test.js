@@ -209,3 +209,47 @@ test('GET /uploads returns 404 JSON instead of SPA HTML when cover file is missi
     await prisma.$disconnect().catch(() => {});
   }
 });
+
+test('frontend URL helpers reject HTTP, credentials, private hosts, and upload traversal', async () => {
+  const { resolvePosterUrl, resolveSafeExternalUrl } = await import('../../apps/web/src/utils/helpers.ts');
+  assert.equal(resolvePosterUrl('/uploads/cover-123.jpg'), '/uploads/cover-123.jpg');
+  assert.equal(resolvePosterUrl('/abc123.jpg', 'w185'), 'https://image.tmdb.org/t/p/w185/abc123.jpg');
+  assert.equal(resolvePosterUrl('https://m.media-amazon.com/images/M/poster.jpg'), 'https://m.media-amazon.com/images/M/poster.jpg');
+  assert.equal(resolvePosterUrl('http://example.com/poster.jpg'), '');
+  assert.equal(resolvePosterUrl('https://user:pass@example.com/poster.jpg'), '');
+  assert.equal(resolvePosterUrl('https://127.0.0.1/poster.jpg'), '');
+  assert.equal(resolvePosterUrl('/uploads/../api/export'), '');
+  assert.equal(resolvePosterUrl('//evil.example/poster.jpg'), '');
+
+  assert.equal(resolveSafeExternalUrl('https://www.imdb.com/title/tt0133093/'), 'https://www.imdb.com/title/tt0133093/');
+  assert.equal(resolveSafeExternalUrl('http://www.imdb.com/title/tt0133093/'), null);
+  assert.equal(resolveSafeExternalUrl('https://localhost:3000/admin'), null);
+});
+
+test('authenticated API responses set Cache-Control: private, no-store', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  const script = `
+    import { once } from 'node:events';
+    const { app, prisma } = await import('./apps/api/server/index.js');
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const addr = server.address();
+    try {
+      const res = await fetch('http://127.0.0.1:' + addr.port + '/api/movies/invalid-id', {
+        headers: { Authorization: 'Bearer sentinel-cache-test' },
+      });
+      console.log(JSON.stringify({ status: res.status, cacheControl: res.headers.get('cache-control') }));
+    } finally {
+      await new Promise((r) => server.close(r));
+      await prisma.$disconnect().catch(() => {});
+    }
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { ...process.env, API_AUTH_TOKEN: 'sentinel-cache-test' },
+  });
+  const result = JSON.parse(stdout.trim());
+  assert.equal(result.status, 400);
+  assert.equal(result.cacheControl, 'private, no-store');
+});

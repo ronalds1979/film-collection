@@ -179,6 +179,8 @@ const requireAuthIfConfigured = (req, res, next) => {
     res.status(401).json({ success: false, message: 'Authentication required.' });
     return;
   }
+  // 🛡️ Sentinel: Prevent shared proxies or browser disk caches from storing authenticated catalog/export responses
+  res.setHeader('Cache-Control', 'private, no-store');
   next();
 };
 
