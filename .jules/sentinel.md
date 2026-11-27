@@ -71,3 +71,8 @@
 **Vulnerability:** `isPrivateOrLoopbackHost` in `apps/api/server/schemas/movie.js` blocked link-local (`fe80::/10`), ULA (`fc00::/7`), and NAT64 (`64:ff9b::/96`), but permitted 6to4 (`2002::/16`, e.g., `2002:7f00:1::` and `2002:a9fe:a9fe::`), Teredo (`2001::/32`), deprecated site-local (`fec0::/10`), and documentation (`2001:db8::/32`) IPv6 addresses.
 **Learning:** IPv6 transition prefixes such as 6to4 encode arbitrary IPv4 addresses (including `127.0.0.1` and `169.254.169.254`) inside non-`::ffff:` hextets, bypassing both dotted-quad and `::xxxx:yyyy` IPv4-compatible decoders.
 **Prevention:** Explicitly block IPv6 transition (`2002::/16`, `2001::/32`), site-local (`fec0::/10`), and non-routable documentation (`2001:db8::/32`) ranges alongside `fe80::/10`, `fc00::/7`, and `64:ff9b::/96`.
+
+## 2026-11-27 - Missing Host Header Validation Enabling DNS Rebinding
+**Vulnerability:** `apps/api/server/index.js` checked `Origin` and `Sec-Fetch-Site` on mutating `/api` requests and CORS `Origin`, but did not validate the HTTP `Host` header on incoming requests.
+**Learning:** When the API binds to loopback (`127.0.0.1:3000`) without `API_AUTH_TOKEN`, a DNS-rebinding domain resolving to `127.0.0.1` executes same-origin `GET` requests (omitting `Origin` with `Sec-Fetch-Site: same-origin`), bypassing CORS and mutating-method CSRF guards to read `/api/export`, `/api/movies`, and `/uploads/*`.
+**Prevention:** Enforce a strict local `Host` header allowlist (`127.0.0.1`, `localhost`, `[::1]`, plus configured `CORS_ORIGINS`/`HOST`/`ALLOWED_HOSTS`, rejecting missing or duplicate `Host` headers) before CORS/route middleware whenever running unauthenticated or on loopback.

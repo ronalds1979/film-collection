@@ -77,9 +77,64 @@ const allowedCorsOrigins = new Set(
     .filter(Boolean),
 );
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const allowedHostnames = new Set(['127.0.0.1', 'localhost', '[::1]']);
+for (const origin of allowedCorsOrigins) {
+  try {
+    allowedHostnames.add(new URL(origin).hostname.toLowerCase());
+  } catch {
+    // Ignore malformed CORS origin entries
+  }
+}
+for (const configuredHost of [process.env.HOST, ...(process.env.ALLOWED_HOSTS || '').split(',')]) {
+  const normalized = (configuredHost || '').trim().toLowerCase();
+  if (normalized && normalized !== '0.0.0.0' && normalized !== '::') {
+    allowedHostnames.add(normalized === '::1' ? '[::1]' : normalized);
+  }
+}
+
+const isAllowedHostHeader = (req) => {
+  if (process.env.ALLOW_UNAUTHENTICATED_LAN === 'true') {
+    return true;
+  }
+  const configuredBindHost = (process.env.HOST || '127.0.0.1').trim().toLowerCase();
+  if ((process.env.API_AUTH_TOKEN || '').trim() && !LOOPBACK_HOSTS.has(configuredBindHost)) {
+    return true;
+  }
+  let hostHeaderCount = 0;
+  for (let i = 0; i < (req.rawHeaders || []).length; i += 2) {
+    if (req.rawHeaders[i].toLowerCase() === 'host') {
+      hostHeaderCount += 1;
+      if (hostHeaderCount > 1) return false;
+    }
+  }
+  const rawHost = (req.headers?.host || '').trim().toLowerCase();
+  if (!rawHost || /[@\s/\\]/.test(rawHost)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(`http://${rawHost}`);
+    if (parsed.username || parsed.password || parsed.pathname !== '/') {
+      return false;
+    }
+    return allowedHostnames.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 if (process.env.TRUST_PROXY) {
   app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
 }
+
+// 🛡️ Sentinel: Enforce local Host header allowlist to block DNS rebinding on unauthenticated loopback servers
+app.use((req, res, next) => {
+  if (!isAllowedHostHeader(req)) {
+    res.status(403).json({ success: false, message: 'Host not allowed.' });
+    return;
+  }
+  next();
+});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -155,7 +210,6 @@ const createRateLimiter = ({ windowMs = RATE_LIMIT_WINDOW_MS, maxRequests = RATE
 const heavyEndpointLimiter = createRateLimiter();
 const globalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 300 });
 const apiAuthToken = (process.env.API_AUTH_TOKEN || '').trim();
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const SAFE_FETCH_SITES = new Set(['same-origin', 'same-site', 'none']);
 

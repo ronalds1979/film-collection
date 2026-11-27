@@ -253,3 +253,39 @@ test('authenticated API responses set Cache-Control: private, no-store', async (
   assert.equal(result.status, 400);
   assert.equal(result.cacheControl, 'private, no-store');
 });
+
+test('Host header allowlist blocks DNS rebinding hosts and allows loopback hosts', async () => {
+  const { app, prisma } = await import('../../apps/api/server/index.js');
+  const http = await import('node:http');
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+
+    const requestWithHost = (hostHeader) => new Promise((resolve, reject) => {
+      const req = http.request({
+        host: '127.0.0.1',
+        port: address.port,
+        path: '/api/health',
+        method: 'GET',
+        headers: { Host: hostHeader },
+      }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
+    assert.equal(await requestWithHost(`127.0.0.1:${address.port}`), 200);
+    assert.equal(await requestWithHost(`localhost:${address.port}`), 200);
+    assert.equal(await requestWithHost(`[::1]:${address.port}`), 200);
+    assert.equal(await requestWithHost(`rebind.attacker.example:${address.port}`), 403);
+    assert.equal(await requestWithHost(`localhost.attacker.example:${address.port}`), 403);
+    assert.equal(await requestWithHost(`evil@127.0.0.1:${address.port}`), 403);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await prisma.$disconnect().catch(() => {});
+  }
+});
