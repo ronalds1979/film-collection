@@ -294,7 +294,15 @@ const MovieCarouselRow = memo(function MovieCarouselRow({ genre, movies, onSelec
       }}
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography variant="h6" component="h2" fontWeight={700}>{genre.name}</Typography>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography variant="h6" component="h2" fontWeight={700}>{genre.name}</Typography>
+          <Chip
+            size="small"
+            variant="outlined"
+            label={movies.length}
+            aria-label={`${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}`}
+          />
+        </Stack>
         <Stack direction="row">
           <Tooltip title="Scroll left">
             <span>
@@ -857,19 +865,6 @@ export function CollectionPage() {
                 </Button>
               )}
             </Stack>
-          )}
-          {genreError && (
-            <Alert
-              severity="error"
-              sx={{ mt: 2 }}
-              action={
-                <Button color="inherit" size="small" onClick={() => setReloadToken((n) => n + 1)}>
-                  Retry
-                </Button>
-              }
-            >
-              {genreError}
-            </Alert>
           )}
         </Paper>
 
