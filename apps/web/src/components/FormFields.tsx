@@ -5,6 +5,45 @@ import RotateRightRounded from '@mui/icons-material/RotateRightRounded';
 import { CoverUploadStatus, Genre } from '../types';
 
 type NamedOption = { id: string; name: string };
+type LabeledOption = { id: string; label: string };
+
+// ⚡ Bolt: Memoize static Select controls (Format, Edition type, Watched status) so typing in
+// unrelated AddMovie text fields skips re-rendering 3 MUI Select trees and their MenuItems per keystroke.
+export const OptionSelectField = memo(function OptionSelectField({
+  labelId,
+  selectId,
+  label,
+  field,
+  value,
+  options,
+  onFieldChange,
+}: {
+  labelId: string;
+  selectId: string;
+  label: string;
+  field: string;
+  value: string;
+  options: LabeledOption[];
+  onFieldChange: (field: string, value: string) => void;
+}) {
+  const handleChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      onFieldChange(field, event.target.value);
+    },
+    [field, onFieldChange],
+  );
+
+  return (
+    <FormControl fullWidth>
+      <InputLabel id={labelId}>{label}</InputLabel>
+      <Select labelId={labelId} id={selectId} label={label} value={value} onChange={handleChange}>
+        {options.map((option) => (
+          <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
+});
 
 // ⚡ Bolt: Memoize the multi-select genres control and index selected IDs in a Set so typing
 // in unrelated AddMovie fields skips re-rendering 18 MenuItem/Checkbox subtrees per keystroke.

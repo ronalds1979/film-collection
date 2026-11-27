@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, FormControlLabel, Grid, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControlLabel, Grid, IconButton, InputAdornment, Paper, Stack, TextField, Tooltip, Typography, Chip } from '@mui/material';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
@@ -8,8 +8,10 @@ import ClearRounded from '@mui/icons-material/ClearRounded';
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import { Movie, Genre, Edition, SearchResult, UploadedCover, BarcodeScanStatus, CoverUploadStatus } from '../types';
 import { API_BASE, emptyMovieForm, pendingCoversStorageKey, prepareMobileImage, readPendingCovers, removePendingCover, persistPendingCover, rotateImage180, coverReference, resolvePosterUrl, resolveSafeExternalUrl, isValidRetailBarcode, baseCollator } from '../utils/helpers';
-import { UploadField, NameOptionField, SuggestionField, GenreSelectField } from '../components/FormFields';
+import { UploadField, NameOptionField, SuggestionField, GenreSelectField, OptionSelectField } from '../components/FormFields';
 import { formatLabel, formatOptions, editionTypeOptions, watchedOptions, ageRatingOptions, countryOptions, languageOptions, movieVersionOptions, conditionOptions, regionOptions } from '../utils/constants';
+
+const watchedSelectOptions = watchedOptions.map((option) => ({ id: option, label: option }));
 
 function getStatusSeverity(msg: string): 'error' | 'warning' | 'success' | 'info' {
   const lower = msg.toLowerCase();
@@ -1153,34 +1155,37 @@ export function AddMoviePage() {
               <TextField fullWidth label="Disc count" type="number" value={form.discCount} onChange={(event) => updateForm('discCount', event.target.value)} />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel id="add-movie-format-label">Format</InputLabel>
-                <Select labelId="add-movie-format-label" id="add-movie-format-select" label="Format" value={form.formatId} onChange={(event) => updateForm('formatId', event.target.value)}>
-                  {formatOptions.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <OptionSelectField
+                labelId="add-movie-format-label"
+                selectId="add-movie-format-select"
+                label="Format"
+                field="formatId"
+                value={form.formatId}
+                options={formatOptions}
+                onFieldChange={updateForm}
+              />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel id="add-movie-edition-type-label">Edition type</InputLabel>
-                <Select labelId="add-movie-edition-type-label" id="add-movie-edition-type-select" label="Edition type" value={form.editionTypeId} onChange={(event) => updateForm('editionTypeId', event.target.value)}>
-                  {editionTypeOptions.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <OptionSelectField
+                labelId="add-movie-edition-type-label"
+                selectId="add-movie-edition-type-select"
+                label="Edition type"
+                field="editionTypeId"
+                value={form.editionTypeId}
+                options={editionTypeOptions}
+                onFieldChange={updateForm}
+              />
             </Grid>
             <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel id="add-movie-watched-label">Watched status</InputLabel>
-                <Select labelId="add-movie-watched-label" id="add-movie-watched-select" label="Watched status" value={form.watchedStatus} onChange={(event) => updateForm('watchedStatus', event.target.value)}>
-                  {watchedOptions.map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <OptionSelectField
+                labelId="add-movie-watched-label"
+                selectId="add-movie-watched-select"
+                label="Watched status"
+                field="watchedStatus"
+                value={form.watchedStatus}
+                options={watchedSelectOptions}
+                onFieldChange={updateForm}
+              />
             </Grid>
             <Grid item xs={12} md={4}>
               <SuggestionField label="Condition" field="condition" value={form.condition} options={conditionOptions} onFieldChange={updateForm} />
