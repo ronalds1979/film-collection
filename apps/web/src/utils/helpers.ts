@@ -251,17 +251,37 @@ const SAFE_UPLOAD_PATH_REGEX = /^\/uploads\/(?!\.\.?$)[^/\\]+$/;
 const SAFE_TMDB_IMAGE_PATH_REGEX = /^\/[A-Za-z0-9._-]+\.(?:jpg|jpeg|png|webp)$/i;
 
 function isPrivateOrLoopbackHost(rawHostname: string): boolean {
+  // 🛡️ Sentinel: Keep frontend SSRF host validation in parity with backend schema checks
   const host = rawHostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   if (
     !host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')
-    || host === '::1' || host === '::' || host.startsWith('::ffff:') || /^fe[89ab][0-9a-f]:/.test(host)
-    || host.startsWith('fc') || host.startsWith('fd')
+    || host === '::1' || host === '::' || /^(?:0+:){7}0*[01]$/.test(host)
   ) return true;
+  if (host.includes(':')) {
+    if (
+      host.startsWith('::ffff:') || /^fe[89ab][0-9a-f]:/.test(host) || /^fe[c-f][0-9a-f]:/.test(host)
+      || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('ff')
+      || host.startsWith('64:ff9b:') || host.startsWith('100::') || host.startsWith('2002:')
+      || host.startsWith('2001::') || host.startsWith('2001:0:') || host.startsWith('2001:db8:')
+    ) return true;
+    const ipv4Compat = host.match(/^::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (ipv4Compat) {
+      const hi = parseInt(ipv4Compat[1], 16);
+      const lo = parseInt(ipv4Compat[2], 16);
+      return isPrivateOrLoopbackHost(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
+    }
+    if (/^::[0-9a-f]{1,4}$/.test(host)) return true;
+    const embeddedIpv4 = host.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (embeddedIpv4) return isPrivateOrLoopbackHost(embeddedIpv4[1]);
+  }
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!ipv4) return false;
-  const [a, b] = ipv4.slice(1).map(Number);
+  const octets = ipv4.slice(1).map(Number);
+  if (octets.some((octet) => octet > 255)) return true;
+  const [a, b] = octets;
   return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127)
-    || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+    || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19)) || a >= 224;
 }
 
 // 🛡️ Sentinel: Enforce HTTPS-only external links/posters without credentials or private/loopback targets

@@ -222,8 +222,15 @@ test('frontend URL helpers reject HTTP, credentials, private hosts, and upload t
   assert.equal(resolvePosterUrl('//evil.example/poster.jpg'), '');
 
   assert.equal(resolveSafeExternalUrl('https://www.imdb.com/title/tt0133093/'), 'https://www.imdb.com/title/tt0133093/');
+  assert.equal(resolveSafeExternalUrl('https://fc.example.com/title/tt0133093/'), 'https://fc.example.com/title/tt0133093/');
   assert.equal(resolveSafeExternalUrl('http://www.imdb.com/title/tt0133093/'), null);
   assert.equal(resolveSafeExternalUrl('https://localhost:3000/admin'), null);
+  assert.equal(resolveSafeExternalUrl('https://[::7f00:1]/admin'), null);
+  assert.equal(resolveSafeExternalUrl('https://[2002:7f00:1::]/admin'), null);
+  assert.equal(resolveSafeExternalUrl('https://[fec0::1]/admin'), null);
+  assert.equal(resolveSafeExternalUrl('https://[64:ff9b::127.0.0.1]/admin'), null);
+  assert.equal(resolveSafeExternalUrl('https://198.18.0.1/admin'), null);
+  assert.equal(resolvePosterUrl('https://[2002:a9fe:a9fe::]/poster.jpg'), '');
 });
 
 test('authenticated API responses set Cache-Control: private, no-store', async () => {

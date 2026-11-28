@@ -76,3 +76,9 @@
 **Vulnerability:** `apps/api/server/index.js` checked `Origin` and `Sec-Fetch-Site` on mutating `/api` requests and CORS `Origin`, but did not validate the HTTP `Host` header on incoming requests.
 **Learning:** When the API binds to loopback (`127.0.0.1:3000`) without `API_AUTH_TOKEN`, a DNS-rebinding domain resolving to `127.0.0.1` executes same-origin `GET` requests (omitting `Origin` with `Sec-Fetch-Site: same-origin`), bypassing CORS and mutating-method CSRF guards to read `/api/export`, `/api/movies`, and `/uploads/*`.
 **Prevention:** Enforce a strict local `Host` header allowlist (`127.0.0.1`, `localhost`, `[::1]`, plus configured `CORS_ORIGINS`/`HOST`/`ALLOWED_HOSTS`, rejecting missing or duplicate `Host` headers) before CORS/route middleware whenever running unauthenticated or on loopback.
+
+
+## 2026-11-28 - Frontend SSRF Validator Drift & Domain Prefix False Positive
+**Vulnerability:** `apps/web/src/utils/helpers.ts` (`isPrivateOrLoopbackHost`) lacked the IPv6 hex-normalized (`::7f00:1`), 6to4/Teredo/documentation (`2002::/16`, `2001::/32`, `2001:db8::/32`), site-local (`fec0::/10`), NAT64 (`64:ff9b::/96`), and `198.18.0.0/15` checks present in `apps/api/server/schemas/movie.js`, and checked `host.startsWith('fc')`/`'fd'` without requiring `:`.
+**Learning:** Duplicated SSRF validators across monorepo packages drift silently as new bypass classes are patched on the backend, and unguarded IPv6 prefix checks match legitimate public hostnames like `fc.example.com`.
+**Prevention:** Keep `apps/web/src/utils/helpers.ts` `isPrivateOrLoopbackHost` in full parity with `apps/api/server/schemas/movie.js` and always gate IPv6 prefix checks on `host.includes(':')`.
