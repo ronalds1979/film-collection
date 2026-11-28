@@ -195,6 +195,8 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
   const captureInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const busy = uploading || rotating;
+  const cleanLabel = label.replace(/\s*\(required\)\s*/i, '').trim();
+  const cleanLower = cleanLabel.toLowerCase();
   return (
     <Box sx={{ minWidth: { xs: '100%', md: 220 }, flex: 1 }}>
       <Stack spacing={1}>
@@ -271,12 +273,14 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
           startIcon={busy ? <CircularProgress size={18} /> : <PhotoCamera />}
         >
           {isDragging
-            ? `Drop ${label.toLowerCase()} here`
+            ? `Drop ${cleanLower} here`
             : uploading
-              ? `Preparing ${label.toLowerCase()}...`
+              ? `Preparing ${cleanLower}...`
               : rotating
-                ? `Rotating ${label.toLowerCase()}...`
-                : `Capture ${label.toLowerCase()}`}
+                ? `Rotating ${cleanLower}...`
+                : uploaded
+                  ? `Replace ${cleanLower}`
+                  : `Capture ${label.toLowerCase()}`}
         </Button>
         <Button
           variant="text"
@@ -284,7 +288,7 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
           onClick={() => galleryInputRef.current?.click()}
           sx={{ width: '100%' }}
         >
-          Choose {label.toLowerCase()} from photos
+          {uploaded ? `Replace ${cleanLower} from photos` : `Choose ${cleanLower} from photos`}
         </Button>
       </Stack>
       {value && !uploading && (
@@ -301,13 +305,18 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
         </Alert>
       )}
       {uploadStatus && (
-        <Alert severity={uploadStatus.severity} role="status" aria-live="polite" sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}>
+        <Alert
+          severity={uploadStatus.severity}
+          role={uploadStatus.severity === 'error' ? 'alert' : 'status'}
+          aria-live={uploadStatus.severity === 'error' ? 'assertive' : 'polite'}
+          sx={{ mt: 1, py: 0, overflowWrap: 'anywhere' }}
+        >
           {uploadStatus.message}
         </Alert>
       )}
       {uploadStatus?.severity === 'error' && value && (
         <Button fullWidth size="small" onClick={onRetry} sx={{ mt: 0.5 }}>
-          Retry {label.toLowerCase()} upload
+          Retry {cleanLower} upload
         </Button>
       )}
       {uploadedPath && (
@@ -325,7 +334,7 @@ export const UploadField = memo(function UploadField({ label, value, uploading, 
           <Box
             component="img"
             src={uploadedPath}
-            alt={`${label} saved preview`}
+            alt={`${cleanLabel} saved preview`}
             sx={{ display: 'block', width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 2, mt: 1, background: 'rgba(0,0,0,0.2)' }}
           />
         </>
