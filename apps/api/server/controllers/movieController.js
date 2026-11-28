@@ -89,7 +89,11 @@ export const getMovies = async (req, res, next) => {
     }
 
     const rawOffset = req.query?.offset;
-    const offset = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+    // 🛡️ Sentinel: Require non-negative safe integers for pagination offset to prevent float/Infinity Prisma 500 errors
+    const parsedOffset = rawOffset !== undefined ? Number(rawOffset) : null;
+    const offset = parsedOffset !== null && Number.isSafeInteger(parsedOffset) && parsedOffset >= 0
+      ? Math.min(parsedOffset, 100000)
+      : undefined;
     const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
     const isSummary = req.query?.view === 'summary';
 
@@ -159,8 +163,12 @@ export const getEditions = async (req, res, next) => {
     const rawLimit = req.query?.limit;
     const rawOffset = req.query?.offset;
     const limit = rawLimit !== undefined ? Number(rawLimit) : null;
+    const parsedOffset = rawOffset !== undefined ? Number(rawOffset) : null;
     const take = limit !== null && Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1000) : undefined;
-    const skip = rawOffset !== undefined ? Math.max(0, Number(rawOffset) || 0) : undefined;
+    // 🛡️ Sentinel: Bound skip to safe non-negative integers so malformed offsets cannot trigger Prisma validation 500s
+    const skip = parsedOffset !== null && Number.isSafeInteger(parsedOffset) && parsedOffset >= 0
+      ? Math.min(parsedOffset, 100000)
+      : undefined;
 
     const editions = await prisma.edition.findMany({
       include: { movie: true },

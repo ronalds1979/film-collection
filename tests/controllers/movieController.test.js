@@ -296,3 +296,45 @@ test('Host header allowlist blocks DNS rebinding hosts and allows loopback hosts
     await prisma.$disconnect().catch(() => {});
   }
 });
+
+test('GET /api/movies and /api/editions ignore non-integer or Infinity offset values and clamp safe offsets', async () => {
+  const { app, prisma } = await import('../../apps/api/server/index.js');
+  const origMovieFindMany = prisma.movie.findMany;
+  const origEditionFindMany = prisma.edition.findMany;
+  const movieArgs = [];
+  const editionArgs = [];
+  prisma.movie.findMany = async (args) => {
+    movieArgs.push(args);
+    return [];
+  };
+  prisma.edition.findMany = async (args) => {
+    editionArgs.push(args);
+    return [];
+  };
+
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+
+    for (const badOffset of ['Infinity', '-Infinity', '1.5', '-10', '99999999999999999999']) {
+      const moviesRes = await fetch(`http://127.0.0.1:${address.port}/api/movies?offset=${encodeURIComponent(badOffset)}`);
+      assert.equal(moviesRes.status, 200);
+      assert.equal('skip' in movieArgs.at(-1), false, `Expected skip omitted for offset=${badOffset}`);
+
+      const editionsRes = await fetch(`http://127.0.0.1:${address.port}/api/editions?offset=${encodeURIComponent(badOffset)}`);
+      assert.equal(editionsRes.status, 200);
+      assert.equal('skip' in editionArgs.at(-1), false, `Expected skip omitted for offset=${badOffset}`);
+    }
+
+    const clampedRes = await fetch(`http://127.0.0.1:${address.port}/api/movies?offset=500000`);
+    assert.equal(clampedRes.status, 200);
+    assert.equal(movieArgs.at(-1).skip, 100000);
+  } finally {
+    prisma.movie.findMany = origMovieFindMany;
+    prisma.edition.findMany = origEditionFindMany;
+    await new Promise((resolve) => server.close(resolve));
+    await prisma.$disconnect().catch(() => {});
+  }
+});
