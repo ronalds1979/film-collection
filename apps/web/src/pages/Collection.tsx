@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState, useMemo, useRef, useDeferredValue } from 'react';
-import { Box, Button, Card, CardActionArea, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardContent, CardMedia, Chip, CircularProgress, Container, FormControl, InputAdornment, InputLabel, MenuItem, Paper, Select, SelectChangeEvent, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography, Alert, IconButton, useMediaQuery, useTheme } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearRounded from '@mui/icons-material/ClearRounded';
@@ -497,6 +497,90 @@ const CollectionTable = memo(function CollectionTable({ rows, isLoading, loadErr
 
 const COLLECTION_PAGE_SIZE = 60;
 
+// ⚡ Bolt: Memoize filter dropdowns and display-mode toggle so synchronous searchTerm keystrokes
+// skip re-rendering 3 MUI Select trees (~27 MenuItems) and mode buttons on every character typed.
+const CollectionFilterControls = memo(function CollectionFilterControls({
+  statusFilter,
+  genreFilter,
+  collectionView,
+  displayMode,
+  genres,
+  onStatusChange,
+  onGenreChange,
+  onViewChange,
+  onDisplayTable,
+  onDisplayCarousel,
+}: {
+  statusFilter: string;
+  genreFilter: string;
+  collectionView: string;
+  displayMode: 'table' | 'carousel';
+  genres: Genre[];
+  onStatusChange: (event: SelectChangeEvent<string>) => void;
+  onGenreChange: (event: SelectChangeEvent<string>) => void;
+  onViewChange: (event: SelectChangeEvent<string>) => void;
+  onDisplayTable: () => void;
+  onDisplayCarousel: () => void;
+}) {
+  return (
+    <>
+      <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
+        <InputLabel id="collection-status-label">Watched status</InputLabel>
+        <Select labelId="collection-status-label" id="collection-status-select" label="Watched status" value={statusFilter} onChange={onStatusChange}>
+          <MenuItem value="all">All</MenuItem>
+          {watchedOptions.map((option) => (
+            <MenuItem key={option} value={option}>{option}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }} disabled={!genres.length}>
+        <InputLabel id="collection-genre-label">Genre</InputLabel>
+        <Select labelId="collection-genre-label" id="collection-genre-select" label="Genre" value={genreFilter} onChange={onGenreChange}>
+          <MenuItem value="all">All genres</MenuItem>
+          {genres.map((genre) => (
+            <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
+        <InputLabel id="collection-view-label">Show</InputLabel>
+        <Select
+          labelId="collection-view-label"
+          id="collection-view-select"
+          label="Show"
+          value={collectionView}
+          onChange={onViewChange}
+        >
+          <MenuItem value="movies">Movies</MenuItem>
+          <MenuItem value="editions">Editions</MenuItem>
+          <MenuItem value="favorites">Favorites</MenuItem>
+          <MenuItem value="unwatched">Unwatched</MenuItem>
+        </Select>
+      </FormControl>
+      {collectionView !== 'editions' && (
+        <Stack direction="row" spacing={1} role="group" aria-label="Display mode" sx={{ flexShrink: 0, width: { xs: '100%', md: 'auto' } }}>
+          <Button
+            variant={displayMode === 'table' ? 'contained' : 'outlined'}
+            onClick={onDisplayTable}
+            aria-pressed={displayMode === 'table'}
+            sx={{ flex: 1 }}
+          >
+            List
+          </Button>
+          <Button
+            variant={displayMode === 'carousel' ? 'contained' : 'outlined'}
+            onClick={onDisplayCarousel}
+            aria-pressed={displayMode === 'carousel'}
+            sx={{ flex: 1 }}
+          >
+            Posters
+          </Button>
+        </Stack>
+      )}
+    </>
+  );
+});
+
 export function CollectionPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -680,6 +764,23 @@ export function CollectionPage() {
   const handleRetry = useCallback(() => {
     setReloadToken((n) => n + 1);
   }, []);
+  const handleStatusChange = useCallback((event: SelectChangeEvent<string>) => {
+    setStatusFilter(event.target.value);
+  }, []);
+  const handleGenreChange = useCallback((event: SelectChangeEvent<string>) => {
+    setGenreFilter(event.target.value);
+  }, []);
+  const handleViewChange = useCallback((event: SelectChangeEvent<string>) => {
+    const nextView = event.target.value;
+    setSearchParams({ view: nextView });
+    if (nextView === 'editions') setDisplayMode('table');
+  }, [setSearchParams]);
+  const handleDisplayTable = useCallback(() => {
+    setDisplayMode('table');
+  }, []);
+  const handleDisplayCarousel = useCallback(() => {
+    setDisplayMode('carousel');
+  }, []);
   const visibleRows = useMemo(
     () => (isCarouselActive ? [] : displayedRows.slice(0, visibleCount)),
     [displayedRows, isCarouselActive, visibleCount],
@@ -779,63 +880,18 @@ export function CollectionPage() {
                 ) : undefined,
               }}
             />
-            <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
-              <InputLabel id="collection-status-label">Watched status</InputLabel>
-              <Select labelId="collection-status-label" id="collection-status-select" label="Watched status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <MenuItem value="all">All</MenuItem>
-                {watchedOptions.map((option) => (
-                  <MenuItem key={option} value={option}>{option}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }} disabled={!genres.length}>
-              <InputLabel id="collection-genre-label">Genre</InputLabel>
-              <Select labelId="collection-genre-label" id="collection-genre-select" label="Genre" value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
-                <MenuItem value="all">All genres</MenuItem>
-                {genres.map((genre) => (
-                  <MenuItem key={genre.id} value={genre.id}>{genre.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl sx={{ width: { xs: 'calc(50% - 6px)', sm: 180 }, minWidth: 0, flexGrow: { xs: 1, sm: 0 } }}>
-              <InputLabel id="collection-view-label">Show</InputLabel>
-              <Select
-                labelId="collection-view-label"
-                id="collection-view-select"
-                label="Show"
-                value={collectionView}
-                onChange={(event) => {
-                  const nextView = event.target.value;
-                  setSearchParams({ view: nextView });
-                  if (nextView === 'editions') setDisplayMode('table');
-                }}
-              >
-                <MenuItem value="movies">Movies</MenuItem>
-                <MenuItem value="editions">Editions</MenuItem>
-                <MenuItem value="favorites">Favorites</MenuItem>
-                <MenuItem value="unwatched">Unwatched</MenuItem>
-              </Select>
-            </FormControl>
-            {collectionView !== 'editions' && (
-              <Stack direction="row" spacing={1} role="group" aria-label="Display mode" sx={{ flexShrink: 0, width: { xs: '100%', md: 'auto' } }}>
-                <Button
-                  variant={displayMode === 'table' ? 'contained' : 'outlined'}
-                  onClick={() => setDisplayMode('table')}
-                  aria-pressed={displayMode === 'table'}
-                  sx={{ flex: 1 }}
-                >
-                  List
-                </Button>
-                <Button
-                  variant={displayMode === 'carousel' ? 'contained' : 'outlined'}
-                  onClick={() => setDisplayMode('carousel')}
-                  aria-pressed={displayMode === 'carousel'}
-                  sx={{ flex: 1 }}
-                >
-                  Posters
-                </Button>
-              </Stack>
-            )}
+            <CollectionFilterControls
+              statusFilter={statusFilter}
+              genreFilter={genreFilter}
+              collectionView={collectionView}
+              displayMode={displayMode}
+              genres={genres}
+              onStatusChange={handleStatusChange}
+              onGenreChange={handleGenreChange}
+              onViewChange={handleViewChange}
+              onDisplayTable={handleDisplayTable}
+              onDisplayCarousel={handleDisplayCarousel}
+            />
           </Stack>
           {genreError && (
             <Alert
