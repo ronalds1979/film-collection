@@ -178,6 +178,25 @@ export function AddMoviePage() {
   const step1Ready = Boolean(form.title.trim());
   const step2Ready = Boolean(uploadedCovers.front && uploadedCovers.back);
   const step3Ready = Boolean(form.genreIds.length && form.formatId);
+  const hasIntakeContent = Boolean(
+    isDirty
+    || uploadedCovers.front
+    || uploadedCovers.back
+    || searchResults.length
+    || barcodeScanStatus
+    || lookupStatusMessage
+    || statusMessage,
+  );
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   useEffect(() => {
     let cancelled = false;
@@ -914,6 +933,11 @@ export function AddMoviePage() {
                   onChange={(event) => updateForm('barcode', event.target.value)}
                   onKeyDown={handleIdentificationKeyDown}
                   inputProps={{ inputMode: 'numeric' }}
+                  FormHelperTextProps={{
+                    sx: {
+                      color: form.barcode ? (isBarcodeValid ? 'success.main' : 'warning.main') : undefined,
+                    },
+                  }}
                   helperText={form.barcode ? (isBarcodeValid ? 'Retail barcode check digit is valid.' : 'Check the digits; checksum validation does not recognize this as a standard retail code.') : 'Scan the barcode on the packaging or enter it manually.'}
                   InputProps={{
                     endAdornment: form.barcode ? (
@@ -1372,7 +1396,7 @@ export function AddMoviePage() {
             </Button>
             {isEditing
               ? <Button variant="outlined" size="large" onClick={() => requestNavigation('/collection')}>Cancel</Button>
-              : <Button variant="outlined" size="large" onClick={() => setConfirmResetOpen(true)}>Reset form</Button>}
+              : <Button variant="outlined" size="large" disabled={!hasIntakeContent || isSaving} onClick={() => setConfirmResetOpen(true)}>Reset form</Button>}
           </Stack>
           {(uploadingCovers.front || uploadingCovers.back || rotatingCovers.front || rotatingCovers.back || !genres.length) && !isSaving && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
